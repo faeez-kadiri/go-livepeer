@@ -606,6 +606,9 @@ func (n *LivepeerNode) transcodeSegmentLoop(md *SegTranscodingMetadata, segChan 
 
 func (n *LivepeerNode) serveTranscoder(stream net.Transcoder_RegisterTranscoderServer, capacity int) {
 	from := common.GetConnectionAddr(stream.Context())
+	glog.Error("Verbose logging: orchestrator.go `serveTranscoder`: capacity: ", capacity)
+	glog.Error("Verbose logging: orchestrator.go `serveTranscoder`: Live transcoders LENGTH: ", n.TranscoderManager.RegisteredTranscodersCount())
+	glog.Error("Verbose logging: orchestrator.go `serveTranscoder`: Remote transcoders LENGTH: ", len(n.TranscoderManager.remoteTranscoders))
 	n.TranscoderManager.Manage(stream, capacity)
 	glog.V(common.DEBUG).Infof("Closing transcoder=%s channel", from)
 }
@@ -743,9 +746,14 @@ func (rtm *RemoteTranscoderManager) RegisteredTranscodersInfo() []net.RemoteTran
 
 // Manage adds transcoder to list of live transcoders. Doesn't return untill transcoder disconnects
 func (rtm *RemoteTranscoderManager) Manage(stream net.Transcoder_RegisterTranscoderServer, capacity int) {
+	glog.Error("Verbose logging: orchestrator.go `Manage0`: Live transcoders: ", rtm.RegisteredTranscodersInfo())
+	glog.Error("Verbose logging: orchestrator.go `Manage0`: Live transcoders LENGTH: ", len(rtm.liveTranscoders))
+	glog.Error("Verbose logging: orchestrator.go `Manage0`: Remote transcoders LENGTH: ", len(rtm.remoteTranscoders))
 	from := common.GetConnectionAddr(stream.Context())
 	transcoder := NewRemoteTranscoder(rtm, stream, capacity)
+	glog.Error("Verbose logging: orchestrator.go `Manage0`: transcoder addr: ", transcoder.addr)
 	go func() {
+		glog.Error("Verbose logging: orchestrator.go `Manage0`: inside go func")
 		ctx := stream.Context()
 		<-ctx.Done()
 		err := ctx.Err()
@@ -753,7 +761,12 @@ func (rtm *RemoteTranscoderManager) Manage(stream net.Transcoder_RegisterTransco
 		transcoder.done()
 	}()
 
+	glog.Error("Verbose logging: orchestrator.go `Manage1`: Live transcoders: ", rtm.RegisteredTranscodersInfo())
+	glog.Error("Verbose logging: orchestrator.go `Manage1`: Live transcoders LENGTH: ", len(rtm.liveTranscoders))
+	glog.Error("Verbose logging: orchestrator.go `Manage1`: Remote transcoders LENGTH: ", len(rtm.remoteTranscoders))
+
 	rtm.RTmutex.Lock()
+
 	rtm.liveTranscoders[transcoder.stream] = transcoder
 	rtm.remoteTranscoders = append(rtm.remoteTranscoders, transcoder)
 	sort.Sort(byLoadFactor(rtm.remoteTranscoders))
@@ -765,6 +778,10 @@ func (rtm *RemoteTranscoderManager) Manage(stream net.Transcoder_RegisterTransco
 	if monitor.Enabled {
 		monitor.SetTranscodersNumberAndLoad(totalLoad, totalCapacity, liveTranscodersNum)
 	}
+
+	glog.Error("Verbose logging: orchestrator.go `Manage2`: Live transcoders: ", rtm.RegisteredTranscodersInfo())
+	glog.Error("Verbose logging: orchestrator.go `Manage2`: Live transcoders LENGTH: ", len(rtm.liveTranscoders))
+	glog.Error("Verbose logging: orchestrator.go `Manage2`: Remote transcoders LENGTH: ", len(rtm.remoteTranscoders))
 
 	<-transcoder.eof
 	glog.Infof("Got transcoder=%s eof, removing from live transcoders map", from)
@@ -818,6 +835,11 @@ func (rtm *RemoteTranscoderManager) completeTranscoders(trans *RemoteTranscoder)
 	}
 	t.load--
 	sort.Sort(byLoadFactor(rtm.remoteTranscoders))
+
+	glog.Error("Verbose logging: orchestrator.go `completeTranscoders`: transcoder: ", trans)
+	glog.Error("Verbose logging: orchestrator.go `completeTranscoders`: Live transcoders LENGTH: ", len(rtm.liveTranscoders))
+	glog.Error("Verbose logging: orchestrator.go `completeTranscoders`: Remote transcoders LENGTH: ", len(rtm.remoteTranscoders))
+
 }
 
 // Caller of this function should hold RTmutex lock
@@ -832,7 +854,18 @@ func (rtm *RemoteTranscoderManager) totalLoadAndCapacity() (int, int, int) {
 
 // Transcode does actual transcoding using remote transcoder from the pool
 func (rtm *RemoteTranscoderManager) Transcode(job string, fname string, profiles []ffmpeg.VideoProfile) (*TranscodeData, error) {
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode1`: fname: ", fname)
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode1`: Live transcoders: ", rtm.RegisteredTranscodersInfo())
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode1`: Live transcoders LENGTH: ", len(rtm.liveTranscoders))
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode1`: Remote transcoders LENGTH: ", len(rtm.remoteTranscoders))
+
 	currentTranscoder := rtm.selectTranscoder()
+
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode2`: fname: ", fname)
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode2`: Live transcoders: ", rtm.RegisteredTranscodersInfo())
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode2`: Live transcoders LENGTH: ", len(rtm.liveTranscoders))
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode2`: Remote Transcoders LENGTH: ", len(rtm.remoteTranscoders))
+
 	if currentTranscoder == nil {
 		return nil, errors.New("No transcoders available")
 	}
@@ -847,5 +880,11 @@ func (rtm *RemoteTranscoderManager) Transcode(job string, fname string, profiles
 		return rtm.Transcode(job, fname, profiles)
 	}
 	rtm.completeTranscoders(currentTranscoder)
+
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode3`: fname: ", fname)
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode3`: Live transcoders: ", rtm.RegisteredTranscodersInfo())
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode3`: Live transcoders LENGTH: ", len(rtm.liveTranscoders))
+	glog.Error("Verbose logging: orchestrator.go `remotetranscoder Transcode3`: Remote Transcoders LENGTH: ", len(rtm.remoteTranscoders))
+
 	return res, err
 }
