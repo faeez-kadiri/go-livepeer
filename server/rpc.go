@@ -98,6 +98,22 @@ type BroadcastSession struct {
 	Sender           pm.Sender
 	PMSessionID      string
 	Balance          Balance
+	tempSession      bool
+}
+
+func (bs *BroadcastSession) makeTempSession() *BroadcastSession {
+	return &BroadcastSession{
+		Broadcaster:      bs.Broadcaster,
+		ManifestID:       bs.ManifestID,
+		Profiles:         bs.Profiles,
+		OrchestratorInfo: bs.OrchestratorInfo,
+		OrchestratorOS:   bs.OrchestratorOS,
+		BroadcasterOS:    bs.BroadcasterOS,
+		Sender:           bs.Sender,
+		PMSessionID:      bs.PMSessionID,
+		Balance:          bs.Balance,
+		tempSession:      true,
+	}
 }
 
 type lphttp struct {
