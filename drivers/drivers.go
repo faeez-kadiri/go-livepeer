@@ -39,7 +39,8 @@ func NewSession(info *net.OSInfo) OSSession {
 	}
 	switch info.StorageType {
 	case net.OSInfo_IPFS:
-		return newIPFSSession()
+//		return newIPFSSession()
+		return nil
 	case net.OSInfo_S3:
 		return newS3Session(info.S3Info)
 	case net.OSInfo_GOOGLE:
@@ -58,7 +59,8 @@ func GetSegmentData(uri string) ([]byte, error) {
 		return nil, fmt.Errorf("Invalid URI")
 	}
 	if parsed.Scheme == "ipfs" {
-		return GetSegmentDataIpfs(uri)
+//		return GetSegmentDataIpfs(uri)
+		return nil, fmt.Errorf("ipfs unsupported")
 	}
 	return getSegmentDataHTTP(uri)
 }

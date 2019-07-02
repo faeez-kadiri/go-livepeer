@@ -15,15 +15,12 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/livepeer/go-livepeer/pm"
-
-	ipfslogging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -38,7 +35,6 @@ import (
 	//"github.com/livepeer/go-livepeer/ipfs" until we re-enable IPFS
 	lpmon "github.com/livepeer/go-livepeer/monitor"
 	"github.com/livepeer/go-livepeer/server"
-	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -120,7 +116,6 @@ func main() {
 	monitor := flag.Bool("monitor", false, "Set to true to send performance metrics")
 	version := flag.Bool("version", false, "Print out the version")
 	verbosity := flag.String("v", "", "Log verbosity.  {4|5|6}")
-	logIPFS := flag.Bool("logIPFS", false, "Set to true if log files should not be generated") // unused until we re-enable IPFS
 
 	// Storage:
 	datadir := flag.String("datadir", "", "data directory")
@@ -521,19 +516,6 @@ func main() {
 	}
 
 	//Create Livepeer Node
-
-	// Set up logging
-	if *logIPFS {
-		ipfslogging.LdJSONFormatter()
-		logger := &lumberjack.Logger{
-			Filename:   path.Join(*ipfsPath, "logs", "ipfs.log"),
-			MaxSize:    10, // Megabytes
-			MaxBackups: 3,
-			MaxAge:     30, // Days
-		}
-		ipfslogging.LevelError()
-		ipfslogging.Output(logger)()
-	}
 
 	//Set up the media server
 	s := server.NewLivepeerServer(*rtmpAddr, *httpAddr, n)
