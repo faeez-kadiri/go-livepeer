@@ -34,7 +34,7 @@ func TestSegmentFlatten(t *testing.T) {
 	s := Segment{
 		StreamID: "abcdef",
 		SegmentSequenceNumber: big.NewInt(1234),
-		DataHash: ethcommon.RightPadBytes([]byte("browns"), 32)
+		DataHash: ethcommon.RightPadBytes([]byte("browns"), 32),
 	}
 	if !bytes.Equal(ethcommon.Keccak256(s.Flatten()), s.Hash().Bytes()) {
 		t.Error("Flattened segment + hash did not match segment hash function")
