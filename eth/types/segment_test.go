@@ -6,22 +6,23 @@ import (
 	"testing"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 func TestSegmentHash(t *testing.T) {
 	var (
 		streamID      = "1"
 		segmentNumber = big.NewInt(0)
-		d0            = "QmR9BnJQisvevpCoSVWWKyownN58nydb2zQt9Z2VtnTnKe"
-
-		sHash = ethcommon.BytesToHash(ethcommon.FromHex("7fa493826bf6dc8fdd3e65ad6170193ec1a92cee5d78311953b3d0da928d7871"))
+		d0            = []byte("QmR9BnJQisvevpCoSVWWKyownN58nydb2zQt9Z2VtnTnKe")
 	)
 
 	segment := &Segment{
 		streamID,
 		segmentNumber,
-		d0,
+		crypto.Keccak256Hash(d0),
 	}
+
+	sHash := crypto.Keccak256Hash(segment.Flatten())
 
 	if segment.Hash() != sHash {
 		t.Fatalf("Invalid segment hash")
@@ -35,9 +36,9 @@ func TestSegmentFlatten(t *testing.T) {
 	s := Segment{
 		StreamID:              "abcdef",
 		SegmentSequenceNumber: big.NewInt(1234),
-		DataHash:              ethcommon.RightPadBytes([]byte("browns"), 32),
+		DataHash:              ethcommon.BytesToHash(ethcommon.RightPadBytes([]byte("browns"), 32)),
 	}
-	if !bytes.Equal(ethcommon.Keccak256(s.Flatten()), s.Hash().Bytes()) {
+	if !bytes.Equal(crypto.Keccak256Hash(s.Flatten()).Bytes(), s.Hash().Bytes()) {
 		t.Error("Flattened segment + hash did not match segment hash function")
 	}
 }
