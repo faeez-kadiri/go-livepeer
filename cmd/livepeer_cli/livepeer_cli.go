@@ -107,9 +107,7 @@ func (w *wizard) initializeOptions() []wizardOpt {
 			fmt.Print("For Rinkeby Eth, go to the Rinkeby faucet (https://faucet.rinkeby.io/).")
 			w.read()
 		}, testnet: true},
-		{desc: "Link Transcoder Account to Profile", invoke: func() {
-			fmt.Println("This is the function")
-		}, notOrchestrator: true},
+		{desc: "Link Transcoder Account to Profile", invoke: w.signDid},
 	}
 	return options
 }

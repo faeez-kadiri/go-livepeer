@@ -16,3 +16,8 @@ func (w *wizard) setGasPrice() {
 
 	httpPostWithParams(fmt.Sprintf("http://%v:%v/setGasPrice", w.host, w.httpPort), val)
 }
+
+func (w *wizard) signDid() {
+	fmt.Printf("signing messages...")
+	httpPost(fmt.Sprintf("http://%v:%v/signDid", w.host, w.httpPort))
+}
