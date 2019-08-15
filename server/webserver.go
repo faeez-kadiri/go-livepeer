@@ -82,6 +82,7 @@ func (s *LivepeerServer) cliWebServerHandlers(bindAddr string) *http.ServeMux {
 		fmt.Println("error:")
 		fmt.Println(err)
 		fmt.Println("cliWebserverHandler hit!")
+		w.Write(signed)
 	})
 
 	//Set the broadcast config for creating onchain jobs.
