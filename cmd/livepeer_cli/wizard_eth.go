@@ -19,5 +19,6 @@ func (w *wizard) setGasPrice() {
 
 func (w *wizard) signDid() {
 	fmt.Printf("signing messages...")
-	httpPost(fmt.Sprintf("http://%v:%v/signDid", w.host, w.httpPort))
+	resp := httpPost(fmt.Sprintf("http://%v:%v/signDid", w.host, w.httpPort))
+	fmt.Println(resp)
 }
