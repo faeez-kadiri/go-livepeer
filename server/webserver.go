@@ -77,12 +77,19 @@ func (s *LivepeerServer) cliWebServerHandlers(bindAddr string) *http.ServeMux {
 	http.DefaultServeMux = http.NewServeMux()
 
 	mux.HandleFunc("/signDid", func(w http.ResponseWriter, r *http.Request) {
-		signed, err := s.LivepeerNode.Eth.Sign([]byte("coolio"))
-		fmt.Println(string(signed))
-		fmt.Println("error:")
-		fmt.Println(err)
-		fmt.Println("cliWebserverHandler hit!")
-		w.Write(signed)
+		//signed, err := s.LivepeerNode.Eth.Sign([]byte("coolio"))
+		//fmt.Println(string(signed))
+		//fmt.Println("error:")
+		//fmt.Println(err)
+		if err := r.ParseForm(); err != nil {
+			glog.Errorf("Parse Form Error: %v", err)
+		}
+		message := r.FormValue("message")
+		signed, err := s.LivepeerNode.Eth.Sign([]byte(message))
+		if err != nil {
+			glog.Errorf("error: %v",  err)
+		}
+		w.Write([]byte(signed))
 	})
 
 	//Set the broadcast config for creating onchain jobs.

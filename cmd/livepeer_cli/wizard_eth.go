@@ -18,7 +18,15 @@ func (w *wizard) setGasPrice() {
 }
 
 func (w *wizard) signDid() {
-	fmt.Printf("signing messages...")
-	resp := httpPost(fmt.Sprintf("http://%v:%v/signDid", w.host, w.httpPort))
-	fmt.Println(resp)
+	fmt.Printf("Enter the message to sign:\n")
+	text, err := w.in.ReadString('\n')
+	if err != nil {
+		fmt.Printf("Failed to read user input", "err", err)
+	}
+	//fmt.Printf(text)
+	val := url.Values{
+		"message": {fmt.Sprintf("%v", text)},
+	}
+	r := httpPostWithParams(fmt.Sprintf("http://%v:%v/signDid", w.host, w.httpPort), val)
+	fmt.Println(fmt.Sprintf("%x", r))
 }
