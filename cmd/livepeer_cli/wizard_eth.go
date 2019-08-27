@@ -17,7 +17,7 @@ func (w *wizard) setGasPrice() {
 	httpPostWithParams(fmt.Sprintf("http://%v:%v/setGasPrice", w.host, w.httpPort), val)
 }
 
-func (w *wizard) signDid() {
+func (w *wizard) signMessage() {
 	fmt.Printf("Enter the message to sign:\n")
 	text, err := w.in.ReadString('\n')
 	if err != nil {
@@ -27,6 +27,6 @@ func (w *wizard) signDid() {
 	val := url.Values{
 		"message": {fmt.Sprintf("%v", text)},
 	}
-	r := httpPostWithParams(fmt.Sprintf("http://%v:%v/signDid", w.host, w.httpPort), val)
+	r := httpPostWithParams(fmt.Sprintf("http://%v:%v/signMessage", w.host, w.httpPort), val)
 	fmt.Println(fmt.Sprintf("%x", r))
 }

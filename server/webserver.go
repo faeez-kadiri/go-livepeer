@@ -76,11 +76,7 @@ func (s *LivepeerServer) cliWebServerHandlers(bindAddr string) *http.ServeMux {
 	mux := http.DefaultServeMux
 	http.DefaultServeMux = http.NewServeMux()
 
-	mux.HandleFunc("/signDid", func(w http.ResponseWriter, r *http.Request) {
-		//signed, err := s.LivepeerNode.Eth.Sign([]byte("coolio"))
-		//fmt.Println(string(signed))
-		//fmt.Println("error:")
-		//fmt.Println(err)
+	mux.HandleFunc("/signMessage", func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			glog.Errorf("Parse Form Error: %v", err)
 		}
