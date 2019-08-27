@@ -23,7 +23,6 @@ func (w *wizard) signMessage() {
 	if err != nil {
 		fmt.Printf("Failed to read user input", "err", err)
 	}
-	//fmt.Printf(text)
 	val := url.Values{
 		"message": {fmt.Sprintf("%v", text)},
 	}
