@@ -241,8 +241,10 @@ func main() {
 		if *nvidia != "" {
 			n.Transcoder = core.NewNvidiaTranscoder(*nvidia, *datadir)
 		} else if *fake && *orchestrator {
+			glog.Info("Using fake transcoder")
 			n.Transcoder = core.NewFakeTranscoder()
 		} else if *fake && !*orchestrator {
+			glog.Info("Using fake standalone transcoder")
 			n.Transcoder = core.NewFakeStandaloneTranscoder()
 		} else {
 			n.Transcoder = core.NewLocalTranscoder(*datadir)
