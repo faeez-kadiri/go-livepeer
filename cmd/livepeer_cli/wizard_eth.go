@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/url"
+	"io"
 )
 
 func (w *wizard) setGasPrice() {
@@ -19,13 +20,20 @@ func (w *wizard) setGasPrice() {
 
 func (w *wizard) signMessage() {
 	fmt.Printf("Enter the message to sign:\n")
+	mystr := []string{""}
 	text, err := w.in.ReadString('\n')
-	if err != nil {
+	mystr = append(mystr, text)
+	for ; err != io.EOF ; {
+		text, err = w.in.ReadString('\n')
+		mystr = append(mystr, text)
+	}
+	fmt.Println(mystr)
+	/*if err != nil {
 		fmt.Printf("Failed to read user input", "err", err)
 	}
 	val := url.Values{
 		"message": {fmt.Sprintf("%v", text)},
 	}
 	r := httpPostWithParams(fmt.Sprintf("http://%v:%v/signMessage", w.host, w.httpPort), val)
-	fmt.Println(fmt.Sprintf("%x", r))
+	fmt.Println(fmt.Sprintf("%x", r))*/
 }
