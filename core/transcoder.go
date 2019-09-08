@@ -35,11 +35,7 @@ func NewFakeStandaloneTranscoder() Transcoder {
 	return &FakeStandaloneTranscoder{}
 }
 
-<<<<<<< HEAD
 func (lt *FakeStandaloneTranscoder) Transcode(job string, fname string, profiles []ffmpeg.VideoProfile) (*TranscodeData, error) {
-=======
-func (lt *FakeStandaloneTranscoder) Transcode(fname string, profiles []ffmpeg.VideoProfile) (*TranscodeData, error) {
->>>>>>> Change fake transcoders to new interface
 	_, seqNo, parseErr := parseURI(fname)
 	glog.Infof("Fake downloading segment seqNo=%d url=%s", seqNo, fname)
 	httpc := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
@@ -65,7 +61,7 @@ func (lt *FakeStandaloneTranscoder) Transcode(fname string, profiles []ffmpeg.Vi
 	for i := range profiles {
 		res := make([]byte, len(data)/((i+1)*2))
 		copy(res, data)
-		segments[i] = &TranscodedSegmentData{Data: res, Pixels: 100}
+		segments[i] = &TranscodedSegmentData{Data: res, Pixels: int64(len(data) * (i + 1))}
 	}
 
 	if monitor.Enabled && parseErr == nil {
@@ -76,20 +72,9 @@ func (lt *FakeStandaloneTranscoder) Transcode(fname string, profiles []ffmpeg.Vi
 		monitor.SegmentTranscoded(0, seqNo, time.Since(start), common.ProfilesNames(profiles))
 	}
 
-<<<<<<< HEAD
-	segments := make([]*TranscodedSegmentData, len(profiles), len(profiles))
-	for i := 0; i < len(profiles); i++ {
-		segments[i] = &TranscodedSegmentData{Data: data, Pixels: int64(len(data) * 2)}
-	}
-
 	return &TranscodeData{
 		Segments: segments,
 		Pixels:   int64(len(data)),
-=======
-	return &TranscodeData{
-		Segments: segments,
-		Pixels:   100,
->>>>>>> Change fake transcoders to new interface
 	}, nil
 }
 
