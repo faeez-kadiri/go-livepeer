@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"io"
+	"strings"
 )
 
 func (w *wizard) setGasPrice() {
@@ -19,21 +20,22 @@ func (w *wizard) setGasPrice() {
 }
 
 func (w *wizard) signMessage() {
-	fmt.Printf("Enter the message to sign:\n")
+	fmt.Printf("Enter or paste the message to sign, then press ctrl + d:\n")
 	mystr := []string{""}
 	text, err := w.in.ReadString('\n')
 	mystr = append(mystr, text)
 	for ; err != io.EOF ; {
-		text, err = w.in.ReadString('\n')
-		mystr = append(mystr, text)
+		if err != io.EOF {
+			text, err = w.in.ReadString('\n')
+			mystr = append(mystr, text)
+		}
 	}
-	fmt.Println(mystr)
-	/*if err != nil {
-		fmt.Printf("Failed to read user input", "err", err)
-	}
+	message := strings.Join(mystr, "")
+	message = strings.TrimSpace(message)
+	fmt.Println(message)
 	val := url.Values{
-		"message": {fmt.Sprintf("%v", text)},
+		"message": {fmt.Sprintf("%v", message)},
 	}
 	r := httpPostWithParams(fmt.Sprintf("http://%v:%v/signMessage", w.host, w.httpPort), val)
-	fmt.Println(fmt.Sprintf("%x", r))*/
+	fmt.Println(fmt.Sprintf("%x", r))
 }
