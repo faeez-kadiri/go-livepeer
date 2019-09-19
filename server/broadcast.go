@@ -20,6 +20,7 @@ import (
 	"github.com/livepeer/go-livepeer/drivers"
 	"github.com/livepeer/go-livepeer/monitor"
 	"github.com/livepeer/go-livepeer/pm"
+	"github.com/livepeer/go-livepeer/verification"
 
 	"github.com/livepeer/lpms/ffmpeg"
 	"github.com/livepeer/lpms/stream"
@@ -434,6 +435,9 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string) 
 		if dlErr != nil {
 			return dlErr
 		}
+
+		verification.Verify(sess.ManifestID, seg, sess.Profiles, res)
+
 		ticketParams := sess.OrchestratorInfo.GetTicketParams()
 		if ticketParams != nil && // may be nil in offchain mode
 			saveErr == nil && // save error leads to early exit before sighash computation
