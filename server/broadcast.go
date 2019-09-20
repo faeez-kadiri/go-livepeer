@@ -439,7 +439,14 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string) 
 
 		if Verifier != nil {
 			// Ignore errors for now
-			Verifier.Verify(sess.ManifestID, seg, sess.Profiles, sess.OrchestratorInfo, res)
+			params := &verification.VerifierParams{
+				ManifestID:   sess.ManifestID,
+				Source:       seg,
+				Profiles:     sess.Profiles,
+				Orchestrator: sess.OrchestratorInfo,
+				Results:      res,
+			}
+			Verifier.Verify(params)
 		}
 
 		ticketParams := sess.OrchestratorInfo.GetTicketParams()

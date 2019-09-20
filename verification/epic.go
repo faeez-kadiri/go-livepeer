@@ -10,11 +10,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/livepeer/go-livepeer/core"
-	"github.com/livepeer/go-livepeer/net"
-
 	"github.com/livepeer/lpms/ffmpeg"
-	"github.com/livepeer/lpms/stream"
 )
 
 type VerificationResolution struct {
@@ -38,10 +34,9 @@ type EpicClassifier struct {
 	Addr string
 }
 
-// XXX mid parameter to go away once we do direct push of video
-func (e *EpicClassifier) Verify(mid core.ManifestID, source *stream.HLSSegment,
-	profiles []ffmpeg.VideoProfile, orch *net.OrchestratorInfo,
-	res *net.TranscodeData) error {
+func (e *EpicClassifier) Verify(params *VerifierParams) error {
+	mid, source, profiles := params.ManifestID, params.Source, params.Profiles
+	orch, res := params.Orchestrator, params.Results
 	glog.Info("\n\n\nVerifying segment....\n")
 	src := fmt.Sprintf("http://127.0.0.1:8935/stream/%s/source/%d.ts", mid, source.SeqNo)
 	renditions := []VerificationRendition{}
