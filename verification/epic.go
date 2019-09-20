@@ -13,21 +13,21 @@ import (
 	"github.com/livepeer/lpms/ffmpeg"
 )
 
-type VerificationResolution struct {
+type epicResolution struct {
 	Width  int `json:"width"`
 	Height int `json:"height"`
 }
-type VerificationRendition struct {
-	Uri        string                 `json:"uri"`
-	Resolution VerificationResolution `json:"resolution"`
-	Framerate  uint                   `json:"frame_rate"`
-	Pixels     int64                  `json:"pixels"`
+type epicRendition struct {
+	URI        string         `json:"uri"`
+	Resolution epicResolution `json:"resolution"`
+	Framerate  uint           `json:"frame_rate"`
+	Pixels     int64          `json:"pixels"`
 }
-type VerificationReq struct {
-	Source         string                  `json:"source"`
-	Renditions     []VerificationRendition `json:"renditions"`
-	OrchestratorID string                  `json:"orchestratorID"`
-	Model          string                  `json:"model"`
+type epicRequest struct {
+	Source         string          `json:"source"`
+	Renditions     []epicRendition `json:"renditions"`
+	OrchestratorID string          `json:"orchestratorID"`
+	Model          string          `json:"model"`
 }
 
 type EpicClassifier struct {
@@ -39,15 +39,15 @@ func (e *EpicClassifier) Verify(params *VerifierParams) error {
 	orch, res := params.Orchestrator, params.Results
 	glog.Info("\n\n\nVerifying segment....\n")
 	src := fmt.Sprintf("http://127.0.0.1:8935/stream/%s/source/%d.ts", mid, source.SeqNo)
-	renditions := []VerificationRendition{}
+	renditions := []epicRendition{}
 	for i, v := range res.Segments {
 		p := profiles[i]
 		w, h, _ := ffmpeg.VideoProfileResolution(p) // XXX check err
 		uri := fmt.Sprintf("http://127.0.0.1:8935/stream/%s/%s/%d.ts",
 			mid, p.Name, source.SeqNo)
-		r := VerificationRendition{
-			Uri:        uri,
-			Resolution: VerificationResolution{Width: w, Height: h},
+		r := epicRendition{
+			URI:        uri,
+			Resolution: epicResolution{Width: w, Height: h},
 			Framerate:  p.Framerate,
 			Pixels:     v.Pixels,
 		}
@@ -58,7 +58,7 @@ func (e *EpicClassifier) Verify(params *VerifierParams) error {
 	if orch.TicketParams != nil {
 		oid = hex.EncodeToString(orch.TicketParams.Recipient)
 	}
-	vreq := VerificationReq{
+	vreq := epicRequest{
 		Source:         src,
 		Renditions:     renditions,
 		OrchestratorID: oid,
