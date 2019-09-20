@@ -15,6 +15,7 @@ import (
 	"github.com/livepeer/go-livepeer/drivers"
 	"github.com/livepeer/go-livepeer/net"
 	"github.com/livepeer/go-livepeer/pm"
+	"github.com/livepeer/go-livepeer/verification"
 	"github.com/livepeer/lpms/ffmpeg"
 	"github.com/livepeer/lpms/stream"
 	"github.com/livepeer/m3u8"
@@ -52,6 +53,17 @@ func bsmWithSessList(sessList []*BroadcastSession) *BroadcastSessionsManager {
 			return sessList, nil
 		},
 	}
+}
+
+type stubVerifier struct {
+	calls  int
+	params *verification.VerifierParams
+}
+
+func (v *stubVerifier) Verify(params *verification.VerifierParams) error {
+	v.calls++
+	v.params = params
+	return nil
 }
 
 type stubPlaylistManager struct {
@@ -518,4 +530,59 @@ func TestVerifyPixels(t *testing.T) {
 	// Test no writing temp file with correct pixels
 	err = verifyPixels("test.flv", nil, p)
 	assert.Nil(err)
+}
+
+func TestVerifierInvocation(t *testing.T) {
+	require := require.New(t)
+	assert := assert.New(t)
+
+	// Stub verifier
+	verifier := &stubVerifier{}
+	Verifier = verifier
+	defer func() { Verifier = nil }()
+
+	// Create stub server
+	ts, mux := stubTLSServer()
+	defer ts.Close()
+	buf, err := proto.Marshal(&net.TranscodeResult{
+		Result: &net.TranscodeResult_Data{
+			Data: &net.TranscodeData{},
+		},
+	})
+	require.Nil(err)
+	mux.HandleFunc("/segment", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write(buf)
+	})
+
+	sess := StubBroadcastSession(ts.URL)
+	sess.Profiles = []ffmpeg.VideoProfile{ffmpeg.P144p30fps16x9}
+	sess.ManifestID = core.ManifestID("foo")
+	bsm := bsmWithSessList([]*BroadcastSession{sess})
+	cxn := &rtmpConnection{
+		mid:         sess.ManifestID,
+		nonce:       7,
+		pl:          &stubPlaylistManager{core.ManifestID("foo")},
+		profile:     &ffmpeg.P144p30fps16x9,
+		sessManager: bsm,
+	}
+
+	seg := &stream.HLSSegment{}
+	err = transcodeSegment(cxn, seg, "dummy")
+	assert.Nil(err)
+	assert.Equal(1, verifier.calls)
+	require.NotNil(verifier.params)
+	assert.Equal(cxn.mid, verifier.params.ManifestID)
+	assert.Equal(seg, verifier.params.Source)
+	// Do it again for good measure
+	err = transcodeSegment(cxn, seg, "dummy")
+	assert.Nil(err)
+	assert.Equal(2, verifier.calls)
+
+	// now "disable" the verifier and ensure no calls
+	Verifier = nil
+	err = transcodeSegment(cxn, seg, "dummy")
+	assert.Nil(err)
+	assert.Equal(2, verifier.calls)
+
 }
