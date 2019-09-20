@@ -2,6 +2,7 @@ package verification
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -39,7 +40,8 @@ type EpicClassifier struct {
 
 // XXX mid parameter to go away once we do direct push of video
 func (e *EpicClassifier) Verify(mid core.ManifestID, source *stream.HLSSegment,
-	profiles []ffmpeg.VideoProfile, res *net.TranscodeData) error {
+	profiles []ffmpeg.VideoProfile, orch *net.OrchestratorInfo,
+	res *net.TranscodeData) error {
 	glog.Info("\n\n\nVerifying segment....\n")
 	src := fmt.Sprintf("http://127.0.0.1:8935/stream/%s/source/%d.ts", mid, source.SeqNo)
 	renditions := []VerificationRendition{}
@@ -57,10 +59,14 @@ func (e *EpicClassifier) Verify(mid core.ManifestID, source *stream.HLSSegment,
 		renditions = append(renditions, r)
 	}
 
+	oid := orch.Transcoder
+	if orch.TicketParams != nil {
+		oid = hex.EncodeToString(orch.TicketParams.Recipient)
+	}
 	vreq := VerificationReq{
 		Source:         src,
 		Renditions:     renditions,
-		OrchestratorID: "foo",
+		OrchestratorID: oid,
 		Model:          "https://storage.googleapis.com/verification-models/verification.tar.xz",
 	}
 	vreqData, err := json.Marshal(vreq)
