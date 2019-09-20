@@ -58,19 +58,19 @@ func (e *EpicClassifier) Verify(params *VerifierParams) error {
 	if orch.TicketParams != nil {
 		oid = hex.EncodeToString(orch.TicketParams.Recipient)
 	}
-	vreq := epicRequest{
+	req := epicRequest{
 		Source:         src,
 		Renditions:     renditions,
 		OrchestratorID: oid,
 		Model:          "https://storage.googleapis.com/verification-models/verification.tar.xz",
 	}
-	vreqData, err := json.Marshal(vreq)
+	reqData, err := json.Marshal(req)
 	if err != nil {
 		glog.Error("Could not marshal JSON for verifier! ", err)
 		return err
 	}
-	glog.Info("\nRequest Body\n", string(vreqData))
-	resp, err := http.Post(e.Addr, "application/json", bytes.NewBuffer(vreqData))
+	glog.Info("\nRequest Body\n", string(reqData))
+	resp, err := http.Post(e.Addr, "application/json", bytes.NewBuffer(reqData))
 	if err != nil {
 		glog.Error("Could not submit response ", err)
 		return err
