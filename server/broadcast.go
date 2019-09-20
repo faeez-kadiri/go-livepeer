@@ -26,6 +26,7 @@ import (
 	"github.com/livepeer/lpms/stream"
 )
 
+var Verifier verification.Verifier
 var BroadcastCfg = &BroadcastConfig{}
 
 type BroadcastConfig struct {
@@ -436,7 +437,10 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string) 
 			return dlErr
 		}
 
-		verification.Verify(sess.ManifestID, seg, sess.Profiles, res)
+		if Verifier != nil {
+			// Ignore errors for now
+			Verifier.Verify(sess.ManifestID, seg, sess.Profiles, res)
+		}
 
 		ticketParams := sess.OrchestratorInfo.GetTicketParams()
 		if ticketParams != nil && // may be nil in offchain mode

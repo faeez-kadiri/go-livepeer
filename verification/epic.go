@@ -33,7 +33,12 @@ type VerificationReq struct {
 	Model          string                  `json:"model"`
 }
 
-func Verify(mid core.ManifestID, source *stream.HLSSegment,
+type EpicClassifier struct {
+	Addr string
+}
+
+// XXX mid parameter to go away once we do direct push of video
+func (e *EpicClassifier) Verify(mid core.ManifestID, source *stream.HLSSegment,
 	profiles []ffmpeg.VideoProfile, res *net.TranscodeData) error {
 	glog.Info("\n\n\nVerifying segment....\n")
 	src := fmt.Sprintf("http://127.0.0.1:8935/stream/%s/source/%d.ts", mid, source.SeqNo)
@@ -64,8 +69,7 @@ func Verify(mid core.ManifestID, source *stream.HLSSegment,
 		return err
 	}
 	glog.Info("\nRequest Body\n", string(vreqData))
-	resp, err := http.Post("http://localhost:5000/verify",
-		"application/json", bytes.NewBuffer(vreqData))
+	resp, err := http.Post(e.Addr, "application/json", bytes.NewBuffer(vreqData))
 	if err != nil {
 		glog.Error("Could not submit response ", err)
 		return err
