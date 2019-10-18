@@ -17,6 +17,8 @@ type loadBalancer struct {
 	// Maps existing sessions to GPUs (as a bitmap).
 	// Each session may exist on one or more GPUs.
 	sessions map[string]uint64
+
+	idx int
 }
 
 func NewGPULoadBalancer(nbGPUs int) *loadBalancer {
@@ -39,7 +41,8 @@ func (lb *loadBalancer) minGPU(sess string, cost int) (int, int, error) {
 		return 0, 0, errNoGPUs
 	}
 	min, sz, idx, actualC := math.MaxInt64, len(lb.gpus), 0, 0
-	for i := 0; i < sz; i++ {
+	for k := 0; k < sz; k++ {
+		i := (lb.idx + k) % sz
 		c := cost
 		if exists := lb.sessions[sess]&(1<<uint64(i)) > 0; !exists {
 			c = penalize(c) // creating a new session is expensive
@@ -66,6 +69,7 @@ func (lb *loadBalancer) choose(sess string, cost int) (int, int, error) {
 		lb.sessions[sess] |= (1 << uint64(i))
 	}
 	lb.gpus[i] += c
+	lb.idx += 1
 	return i, c, nil
 }
 
