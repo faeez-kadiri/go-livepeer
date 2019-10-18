@@ -30,6 +30,7 @@ require (
 	github.com/fatih/color v1.7.0
 	// replace example.com/some/dependency => example.com/some/dependency-fork v1.2.3
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
+	github.com/flyingmutant/rapid v0.0.0-20190904072629-5761511f78c8
 	// github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff // indirect
 	github.com/gballet/go-libpcsclite v0.0.0-20190403181518-312b5175032f
 	github.com/go-logfmt/logfmt v0.4.0
