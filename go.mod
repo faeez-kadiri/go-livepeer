@@ -59,7 +59,7 @@ require (
 	github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/livepeer/joy4 v0.1.1
-	github.com/livepeer/lpms v0.0.0-20191004153601-83352b59757e
+	github.com/livepeer/lpms v0.0.0-20191018221256-38569a304b9e
 	github.com/livepeer/m3u8 v0.11.0
 	github.com/mattn/go-colorable v0.1.2
 	github.com/mattn/go-isatty v0.0.8
