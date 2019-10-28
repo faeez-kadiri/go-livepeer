@@ -56,6 +56,12 @@ func NewLocalTranscoder(workDir string) Transcoder {
 	return &LocalTranscoder{workDir: workDir}
 }
 
+type lb interface {
+	choose(sess string, cost int) (int, int, error)
+	complete(i int, cost int)
+	terminate(sess string, gpu int)
+}
+
 type nvidiaSession struct {
 	used       time.Time
 	transcoder *ffmpeg.Transcoder
@@ -66,7 +72,7 @@ type nvidiaSession struct {
 type NvidiaTranscoder struct {
 	workDir string
 	devices []string
-	lb      *loadBalancer
+	lb      lb
 
 	// The following fields need to be protected by the mutex `mu`
 	mu       *sync.RWMutex
@@ -173,9 +179,9 @@ func (nv *NvidiaTranscoder) Transcode(job string, fname string, profiles []ffmpe
 func NewNvidiaTranscoder(devices string, workDir string) Transcoder {
 	d := strings.Split(devices, ",")
 	return &NvidiaTranscoder{
-		workDir:  workDir,
-		devices:  d,
-		lb:       NewGPULoadBalancer(len(d)),
+		workDir: workDir,
+		devices: d,
+		lb:       NewRRLoadBalancer(len(d)),
 		mu:       &sync.RWMutex{},
 		sessions: make(map[string]*nvidiaSession),
 	}
