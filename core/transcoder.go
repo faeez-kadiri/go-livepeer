@@ -115,7 +115,7 @@ func (nv *NvidiaTranscoder) Transcode(job string, fname string, profiles []ffmpe
 		nv.mu.Unlock()
 		nv.lb.terminate(job, gpu)
 		session.transcoder.StopTranscoder()
-		glog.Info("LB: Deleted transcode session for ", session.key)
+		glog.V(common.DEBUG).Info("LB: Deleted transcode session for ", session.key)
 	}
 
 	// Acquire transcode session. Map to job id + assigned GPU
@@ -125,11 +125,11 @@ func (nv *NvidiaTranscoder) Transcode(job string, fname string, profiles []ffmpe
 	session, exists := nv.sessions[key]
 	if exists {
 		// Transcode session exists, so just reset last used time
-		glog.Info("LB: Using existing transcode session for ", key)
+		glog.V(common.DEBUG).Info("LB: Using existing transcode session for ", key)
 		session.used = time.Now()
 	} else {
 		// No transcode session exists, so create one
-		glog.Info("LB: Creating transcode session for ", key)
+		glog.V(common.DEBUG).Info("LB: Creating transcode session for ", key)
 		session = &nvidiaSession{
 			used:       time.Now(),
 			transcoder: ffmpeg.NewTranscoder(),
@@ -151,7 +151,7 @@ func (nv *NvidiaTranscoder) Transcode(job string, fname string, profiles []ffmpe
 					break
 				}
 			}
-			glog.Info("LB: Stopping transcoder due to timeout for ", key)
+			glog.V(common.DEBUG).Info("LB: Stopping transcoder due to timeout for ", key)
 			cleanupSession(session)
 		}()
 	}
@@ -168,7 +168,7 @@ func (nv *NvidiaTranscoder) Transcode(job string, fname string, profiles []ffmpe
 	// Do the Transcoding
 	res, err := session.transcoder.Transcode(in, opts)
 	if err != nil {
-		glog.Info("LB: Stopping transcoder due to error for ", key)
+		glog.V(common.DEBUG).Info("LB: Stopping transcoder due to error for ", key)
 		cleanupSession(session)
 		return nil, err
 	}
