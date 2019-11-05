@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/livepeer/go-livepeer/common"
@@ -56,135 +55,40 @@ func NewLocalTranscoder(workDir string) Transcoder {
 	return &LocalTranscoder{workDir: workDir}
 }
 
-type lb interface {
-	choose(sess string, cost int) (int, int, error)
-	complete(i int, cost int)
-	terminate(sess string, gpu int)
-}
-
-type nvidiaSession struct {
-	used       time.Time
-	transcoder *ffmpeg.Transcoder
-	key        string
-	nonce      string
-}
-
 type NvidiaTranscoder struct {
 	workDir string
-	devices []string
-	lb      lb
-
-	// The following fields need to be protected by the mutex `mu`
-	mu       *sync.RWMutex
-	sessions map[string]*nvidiaSession
+	device  string
+	session *ffmpeg.Transcoder
 }
 
 func (nv *NvidiaTranscoder) Transcode(job string, fname string, profiles []ffmpeg.VideoProfile) (*TranscodeData, error) {
-	// Estimate cost up front for the LB algo.
-	costEstimate := 0
-	for _, v := range profiles {
-		// This resolution parsing is expensive; would be best to do it just once!
-		w, h, err := ffmpeg.VideoProfileResolution(v)
-		if err != nil {
-			continue
-		}
-		costEstimate += w * h * int(v.Framerate) // TODO incorporate duration
-	}
-	gpu, computedCost, err := nv.lb.choose(job, costEstimate)
-	if err != nil {
-		return nil, err
-	}
-	defer nv.lb.complete(gpu, computedCost)
-
-	// Local cleanup function
-	cleanupSession := func(session *nvidiaSession) {
-		nv.mu.RLock()
-		sess, exists := nv.sessions[session.key]
-		nv.mu.RUnlock()
-		if !exists {
-			return
-		}
-		if sess.nonce != session.nonce {
-			// Session cached at `key` has since been recreated
-			return
-		}
-		// Ordering is very important here!
-		// StopTranscoder may take a long time to execute
-		nv.mu.Lock()
-		delete(nv.sessions, session.key)
-		nv.mu.Unlock()
-		nv.lb.terminate(job, gpu)
-		session.transcoder.StopTranscoder()
-		glog.V(common.DEBUG).Info("LB: Deleted transcode session for ", session.key)
-	}
-
-	// Acquire transcode session. Map to job id + assigned GPU
-	key := job + "_" + nv.devices[gpu]
-	nonce := common.RandName() // because key alone is prone to reuse
-	nv.mu.Lock()
-	session, exists := nv.sessions[key]
-	if exists {
-		// Transcode session exists, so just reset last used time
-		glog.V(common.DEBUG).Info("LB: Using existing transcode session for ", key)
-		session.used = time.Now()
-	} else {
-		// No transcode session exists, so create one
-		glog.V(common.DEBUG).Info("LB: Creating transcode session for ", key)
-		session = &nvidiaSession{
-			used:       time.Now(),
-			transcoder: ffmpeg.NewTranscoder(),
-			key:        key,
-			nonce:      nonce,
-		}
-		nv.sessions[key] = session
-
-		// Launch cleanup monitoring routine
-		go func() {
-			// Terminate the session after a period of inactivity
-			interval := 1 * time.Minute
-			ticker := time.NewTicker(interval)
-			for range ticker.C {
-				nv.mu.RLock()
-				used := session.used
-				nv.mu.RUnlock()
-				if time.Since(used) > interval {
-					break
-				}
-			}
-			glog.V(common.DEBUG).Info("LB: Stopping transcoder due to timeout for ", key)
-			cleanupSession(session)
-		}()
-	}
-	nv.mu.Unlock()
-
 	// Set up in / out config
 	in := &ffmpeg.TranscodeOptionsIn{
 		Fname:  fname,
 		Accel:  ffmpeg.Nvidia,
-		Device: nv.devices[gpu],
+		Device: nv.device,
 	}
 	opts := profilesToTranscodeOptions(nv.workDir, ffmpeg.Nvidia, profiles)
 
 	// Do the Transcoding
-	res, err := session.transcoder.Transcode(in, opts)
+	res, err := nv.session.Transcode(in, opts)
 	if err != nil {
-		glog.V(common.DEBUG).Info("LB: Stopping transcoder due to error for ", key)
-		cleanupSession(session)
 		return nil, err
 	}
 
 	return resToTranscodeData(res, opts)
 }
 
-func NewNvidiaTranscoder(devices string, workDir string) Transcoder {
-	d := strings.Split(devices, ",")
+func NewNvidiaTranscoder(gpu string, workDir string) LoadBalancedTranscoder {
 	return &NvidiaTranscoder{
 		workDir: workDir,
-		devices: d,
-		lb:       NewRRLoadBalancer(len(d)),
-		mu:       &sync.RWMutex{},
-		sessions: make(map[string]*nvidiaSession),
+		device:  gpu,
+		session: ffmpeg.NewTranscoder(),
 	}
+}
+
+func (nv *NvidiaTranscoder) Stop() {
+	nv.session.StopTranscoder()
 }
 
 func parseURI(uri string) (string, uint64, error) {
