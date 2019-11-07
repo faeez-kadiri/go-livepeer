@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -163,4 +165,34 @@ func accumLoad(lb *LoadBalancingTranscoder) int {
 		totalLoad += v
 	}
 	return totalLoad
+}
+
+// Description of a rapid state machine for testing the load balancer
+type lbMachine struct {
+	lb *LoadBalancingTranscoder
+
+	// Our model: various bits of internal state we want to synchronize with
+	gpus map[string]string
+}
+
+func (m *lbMachine) Init(t *rapid.T) {
+	var devices []string
+	nbDevices := rapid.IntsRange(1, 100).Draw(t, "nbDevices").(int)
+	for i := 0; i < nbDevices; i++ {
+		devices = append(devices, strconv.Itoa(i))
+	}
+
+	m.lb = NewLoadBalancingTranscoder(strings.Join(devices, "."), "", newStubTranscoder).(*LoadBalancingTranscoder)
+	m.gpus = make(map[string]string)
+}
+
+func (m *lbMachine) Transcode(t *rapid.T) {
+	sessName := strconv.Itoa(rapid.IntsRange(0, 1000).Draw(t, "sess").(int))
+	_, exists := m.gpus[sessName]
+	if exists {
+	}
+}
+
+func TestLB_Machine(t *testing.T) {
+	rapid.Check(t, rapid.StateMachine(&lbMachine{}))
 }
