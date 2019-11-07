@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"errors"
 	"math"
 	"strings"
@@ -31,7 +30,7 @@ type LoadBalancingTranscoder struct {
 	mu       *sync.RWMutex
 	load     map[string]int
 	sessions map[string]*transcoderSession
-	idx      int
+	idx      int // Ensures a non-tapered work distribution
 }
 
 func NewLoadBalancingTranscoder(devices string, workDir string, newTranscoderFn newTranscoderFn) Transcoder {
@@ -65,27 +64,15 @@ func (lb *LoadBalancingTranscoder) Transcode(job string, fname string, profiles 
 
 func (lb *LoadBalancingTranscoder) createSession(job string, fname string, profiles []ffmpeg.VideoProfile) (*transcoderSession, error) {
 
-	// Estimate cost up front for the LB algo.
-	costEstimate := 0
-	for _, v := range profiles {
-		w, h, err := ffmpeg.VideoProfileResolution(v)
-		if err != nil {
-			continue
-		}
-		costEstimate += w * h * int(v.Framerate) // TODO incorporate duration
-	}
-
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
 	glog.V(common.DEBUG).Info("LB: Creating transcode session for ", job)
-	transcoder, err := lb.choose(job, costEstimate)
-	if err != nil {
-		return nil, err
-	}
+	transcoder := lb.leastLoaded()
 
 	// Acquire transcode session. Map to job id + assigned transcoder
 	key := job + "_" + transcoder
 	nonce := common.RandName() // because key alone is prone to reuse
+	costEstimate := calculateCost(profiles)
 	session := &transcoderSession{
 		transcoder: lb.newT(transcoder, lb.workDir),
 		key:        key,
@@ -94,6 +81,7 @@ func (lb *LoadBalancingTranscoder) createSession(job string, fname string, profi
 	}
 	lb.sessions[job] = session
 	lb.load[transcoder] += costEstimate
+	lb.idx = (lb.idx + 1) % len(lb.transcoders)
 
 	// Local cleanup function
 	cleanupSession := func() {
@@ -120,8 +108,7 @@ func (lb *LoadBalancingTranscoder) createSession(job string, fname string, profi
 	go func() {
 		// Loop
 		for {
-			// XXX make context timeout configurable
-			ctx, cancel := context.WithTimeout(context.Background(), transcodeLoopTimeout)
+			ctx, cancel := transcodeLoopContext()
 			select {
 			case <-ctx.Done():
 				// Terminate the session after a period of inactivity
@@ -151,18 +138,16 @@ func (lb *LoadBalancingTranscoder) createSession(job string, fname string, profi
 
 // Find the lowest loaded transcoder.
 // Expects the mutex `lb.mu` to be locked by the caller.
-func (lb *LoadBalancingTranscoder) choose(sess string, cost int) (string, error) {
-
+func (lb *LoadBalancingTranscoder) leastLoaded() string {
 	min, idx := math.MaxInt64, 0
-	// need a write lock here
 	for i := 0; i < len(lb.transcoders); i++ {
 		k := (i + lb.idx) % len(lb.transcoders)
-		if (lb.load[lb.transcoders[k]] + cost) < min {
-			min = lb.load[lb.transcoders[k]] + cost
+		if lb.load[lb.transcoders[k]] < min {
+			min = lb.load[lb.transcoders[k]]
 			idx = k
 		}
 	}
-	return lb.transcoders[idx], nil
+	return lb.transcoders[idx]
 }
 
 type transcoderParams struct {
@@ -198,4 +183,16 @@ func (sess *transcoderSession) Transcode(job string, fname string, profiles []ff
 	}
 	res := <-params.res
 	return res.TranscodeData, res.error
+}
+
+func calculateCost(profiles []ffmpeg.VideoProfile) int {
+	cost := 0
+	for _, v := range profiles {
+		w, h, err := ffmpeg.VideoProfileResolution(v)
+		if err != nil {
+			continue
+		}
+		cost += w * h * int(v.Framerate) // TODO incorporate duration
+	}
+	return cost
 }

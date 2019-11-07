@@ -1,58 +1,166 @@
 package core
 
 import (
-	"strconv"
+	"context"
 	"testing"
+	"time"
 
 	"github.com/flyingmutant/rapid"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+
+	"github.com/livepeer/lpms/ffmpeg"
 )
 
-func TestLB_Choose(t *testing.T) {
+func TestLB_LeastLoaded(t *testing.T) {
 	assert := assert.New(t)
-	lb := NewGPULoadBalancer(8)
-	isPenalized := func(orig, cost int) bool {
-		return cost == penalize(orig)
-	}
+	lb := NewLoadBalancingTranscoder("0,1,2,3,4", "", newStubTranscoder).(*LoadBalancingTranscoder)
 	rapid.Check(t, func(t *rapid.T) {
-		sessInt := rapid.IntsRange(1, 100).Draw(t, "sess").(int)
-		sess := strconv.Itoa(sessInt)
-		hasGPU := make([]bool, len(lb.gpus))
-
-		// Check existing sessions map in LB and compare before-and-after choosing
-		for i := 0; i < len(hasGPU); i++ {
-			v, exists := lb.sessions[sess]
-			hasGPU[i] = exists && (v&(1<<uint64(i)) > 0)
-		}
-		origCost := sessInt // assume cost == sess for now
-		idx, cost, err := lb.choose(sess, origCost)
-		require.Nil(t, err)
-
-		if hasGPU[idx] {
-			assert.Equal(cost, origCost, "Did not expect cost to change if no insert was done")
-		} else {
-			// New session should have been added
-			assert.Contains(lb.sessions, sess)
-			assert.Equal(uint64(1<<uint64(idx)), lb.sessions[sess]&(1<<uint64(idx)),
-				"Did not find session at index?")
-			assert.True(isPenalized(origCost, cost), "Did not have expected penalty")
-		}
-		// Check actual load balance
-		// this gpu should not be more loaded than any other gpu by `cost`
-		for i := 0; i < len(lb.gpus); i++ {
-			if i == idx {
+		cost := rapid.IntsRange(1, 10).Draw(t, "cost").(int)
+		transcoder := lb.leastLoaded()
+		// ensure we selected the minimum cost
+		lb.load[transcoder] += cost
+		currentLoad := lb.load[transcoder]
+		for k, v := range lb.load {
+			if k == transcoder {
 				continue
 			}
-			c := cost
-			if !hasGPU[i] && !isPenalized(origCost, c) {
-				// account for penalty if would have been a new session at i
-				// (but don't re-penalize if current cost is already penalzied)
-				c = penalize(c)
-			}
-			if lb.gpus[idx] > lb.gpus[i] && lb.gpus[idx]-lb.gpus[i] > c {
-				t.Error("Did not have expected load : ", idx, i, c, lb.gpus)
-			}
+			assert.LessOrEqual(currentLoad, v+cost, "Would have been less loaded")
 		}
 	})
+}
+
+func TestLB_Ratchet(t *testing.T) {
+	// Property: After assigning a new session to a transcoder,
+	//           increment the starting index for the next search
+	//           Also ensure wraparound.
+
+	// Test:     Two transcoders, several sessions with the same set of profiles
+	//           Run multiple transcodes.
+	assert := assert.New(t)
+	lb := NewLoadBalancingTranscoder("0,1", "", newStubTranscoder).(*LoadBalancingTranscoder)
+	sessions := []string{"a", "b", "c", "d", "e"}
+
+	rapid.Check(t, func(t *rapid.T) {
+		sessIdx := rapid.IntsRange(0, len(sessions)-1).Draw(t, "sess").(int)
+		sess := sessions[sessIdx]
+		_, exists := lb.sessions[sess]
+		idx := lb.idx
+		lb.Transcode(sess, "", []ffmpeg.VideoProfile{ffmpeg.P144p30fps16x9})
+		if exists {
+			assert.Equal(idx, lb.idx)
+		} else {
+			assert.Equal((idx+1)%len(lb.transcoders), lb.idx)
+		}
+	})
+}
+
+func TestLB_LoadAssignment(t *testing.T) {
+
+	// Property: Overall load only increases after first segment
+
+	// Test :    Randomize profiles to randomize "load" **per segment**;
+	//           Subsequent segments should ignore subsequent load costs.
+
+	assert := assert.New(t)
+	lb := NewLoadBalancingTranscoder("0,1,2,3,4", "", newStubTranscoder).(*LoadBalancingTranscoder)
+	sessions := []string{"a", "b", "c", "d", "e"}
+	profiles := []ffmpeg.VideoProfile{}
+	for _, v := range ffmpeg.VideoProfileLookup {
+		profiles = append(profiles, v)
+	}
+
+	shuffleProfiles := func(t *rapid.T) []ffmpeg.VideoProfile {
+		// fisher-yates shuffle. or an approximation thereof. ( should test this)
+		for i := len(profiles) - 1; i >= 1; i-- {
+			j := rapid.IntsRange(0, i).Draw(t, "j").(int)
+			profiles[i], profiles[j] = profiles[j], profiles[i]
+		}
+		nbProfs := rapid.IntsRange(1, len(profiles)-1).Draw(t, "nbProfs").(int)
+		return profiles[:nbProfs]
+	}
+
+	// TODO state machine checks would probably be better here?
+	rapid.Check(t, func(t *rapid.T) {
+		sessIdx := rapid.IntsRange(0, len(sessions)-1).Draw(t, "sess").(int)
+		sessName := sessions[sessIdx]
+		profs := shuffleProfiles(t)
+		_, exists := lb.sessions[sessName]
+		totalLoad := accumLoad(lb)
+		lb.Transcode(sessName, "", profs)
+		if exists {
+			assert.Equal(totalLoad, accumLoad(lb))
+		} else {
+			assert.Contains(lb.sessions, sessName, "Transcoder did not establish session")
+			assert.Equal(totalLoad+calculateCost(profs), accumLoad(lb))
+		}
+	})
+}
+
+func TestLB_Transcode(t *testing.T) {
+	// Property: Transcoder should be called with each call to Transcode.
+	assert := assert.New(t)
+	lb := NewLoadBalancingTranscoder("0,1", "", newStubTranscoder).(*LoadBalancingTranscoder)
+	sessions := []string{"a", "b", "c", "d", "e"}
+
+	rapid.Check(t, func(t *rapid.T) {
+		sessIdx := rapid.IntsRange(0, len(sessions)-1).Draw(t, "sess").(int)
+		sessName := sessions[sessIdx]
+		sess, exists := lb.sessions[sessName]
+		count := 0
+		if exists {
+			transcoder := sess.transcoder.(*StubTranscoder)
+			count = transcoder.SegCount
+		}
+		lb.Transcode(sessName, "", []ffmpeg.VideoProfile{ffmpeg.P144p30fps16x9})
+		if !exists {
+			sess, exists = lb.sessions[sessName]
+			assert.True(exists)
+			assert.NotNil(sess)
+		}
+		transcoder := sess.transcoder.(*StubTranscoder)
+		assert.Equal(count+1, transcoder.SegCount)
+	})
+
+	// Property: An error transcoding should propagate.
+	// Test:     Inject an error into an existing transcode session.
+
+	// Ensure session exists prior to transcoding so we can set the flag
+	sessName := sessions[0]
+	_, err := lb.Transcode(sessName, "", []ffmpeg.VideoProfile{ffmpeg.P144p30fps16x9})
+	assert.Nil(err)
+	sess, exists := lb.sessions[sessName]
+	assert.True(exists)
+	assert.NotNil(sess)
+	transcoder := sess.transcoder.(*StubTranscoder)
+	// Now set the fail flag in and check for propagation
+	transcoder.FailTranscode = true
+	_, err = lb.Transcode(sessName, "", []ffmpeg.VideoProfile{ffmpeg.P144p30fps16x9})
+	assert.Equal(err, ErrTranscode)
+
+	// Property: Cancelling a transcoder should remove session.
+	oldContext := transcodeLoopContext
+	defer func() { transcodeLoopContext = oldContext }()
+	//var wg sync.WaitGroup
+	stubCtx, stubCancel := context.WithCancel(context.Background())
+	transcodeLoopContext = func() (context.Context, context.CancelFunc) { return stubCtx, stubCancel }
+	profs := []ffmpeg.VideoProfile{ffmpeg.P144p30fps16x9}
+	sess, err = lb.createSession("abc", "", profs)
+	transcoder = sess.transcoder.(*StubTranscoder)
+	assert.Nil(err, "Could not create session")
+	assert.Equal(sess, lb.sessions["abc"])
+	totalLoad := accumLoad(lb)
+	stubCancel()
+	time.Sleep(10 * time.Millisecond) // allow the cleanup routine to run
+	assert.Nil(lb.sessions["abc"], "Session was not cleaned up")
+	assert.Equal(1, transcoder.StoppedCount, "Session was not stopped")
+	// Check load decreases
+	assert.Equal(totalLoad-calculateCost(profs), accumLoad(lb), "Estimated load did not decrease")
+}
+
+func accumLoad(lb *LoadBalancingTranscoder) int {
+	totalLoad := 0
+	for _, v := range lb.load {
+		totalLoad += v
+	}
+	return totalLoad
 }
