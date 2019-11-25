@@ -407,6 +407,11 @@ func (m *MockSender) EV(sessionID string) (*big.Rat, error) {
 	return ev, args.Error(1)
 }
 
+func (m *MockSender) Validate() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
 // CreateTicketBatch returns a ticket batch of the specified size
 func (m *MockSender) CreateTicketBatch(sessionID string, size int) (*TicketBatch, error) {
 	args := m.Called(sessionID, size)

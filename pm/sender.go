@@ -1,6 +1,7 @@
 package pm
 
 import (
+	"fmt"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -23,6 +24,9 @@ type Sender interface {
 
 	// EV returns the ticket EV for a session
 	EV(sessionID string) (*big.Rat, error)
+
+	// Validate checks whether a sender's deposit is adequate and reserve is not nearing unlock
+	Validate() error
 }
 
 type session struct {
@@ -72,6 +76,24 @@ func (s *sender) EV(sessionID string) (*big.Rat, error) {
 	}
 
 	return ticketEV(session.ticketParams.FaceValue, session.ticketParams.WinProb), nil
+}
+
+func (s *sender) Validate() error {
+	info, err := s.senderManager.GetSenderInfo(s.signer.Account().Address)
+	if err != nil {
+		return fmt.Errorf("could not get sender info: %v", err)
+	}
+
+	if info.Deposit.Cmp(big.NewInt((0))) == 0 {
+		return fmt.Errorf("insufficient deposit")
+	}
+
+	maxWithdrawRound := new(big.Int).Add(s.roundsManager.LastInitializedRound(), big.NewInt(1))
+	if info.WithdrawRound != nil && info.WithdrawRound.Int64() != 0 && info.WithdrawRound.Cmp(maxWithdrawRound) != 1 {
+		return fmt.Errorf("deposit and reserve is set to unlock soon")
+	}
+
+	return nil
 }
 
 // CreateTicketBatch returns a ticket batch of the specified size

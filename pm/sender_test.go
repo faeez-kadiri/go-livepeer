@@ -90,6 +90,50 @@ func TestSenderEV(t *testing.T) {
 	assert.Zero(ticketEV(ticketParams.FaceValue, ticketParams.WinProb).Cmp(ev))
 }
 
+func TestValidate(t *testing.T) {
+	assert := assert.New(t)
+	account := accounts.Account{
+		Address: RandAddress(),
+	}
+	am := &stubSigner{
+		account: account,
+	}
+	rm := &stubRoundsManager{round: big.NewInt(5), blkHash: [32]byte{5}}
+	sm := newStubSenderManager()
+	sm.info[account.Address] = &SenderInfo{
+		Deposit:       big.NewInt(100000),
+		WithdrawRound: big.NewInt(0),
+	}
+	s := NewSender(am, rm, sm, big.NewRat(100, 1), 2)
+
+	// GetSenderInfo error
+	sm.err = errors.New("GetSenderInfo error")
+	err := s.Validate()
+	assert.EqualError(err, "could not get sender info: GetSenderInfo error")
+	sm.err = nil
+
+	// insufficient deposit
+	sm.info[account.Address].Deposit = big.NewInt(0)
+	err = s.Validate()
+	assert.EqualError(err, "insufficient deposit")
+	sm.info[account.Address].Deposit = big.NewInt(10000)
+
+	// sender's (withdraw round + 1 <= current round)
+	sm.info[account.Address].WithdrawRound = big.NewInt(4)
+	err = s.Validate()
+	assert.EqualError(err, "deposit and reserve is set to unlock soon")
+	sm.info[account.Address].WithdrawRound = big.NewInt(0)
+
+	// Sufficient deposit and not unlocked
+	err = s.Validate()
+	assert.NoError(err)
+
+	// Sufficient deposit and unlocked but (withdrawRound + 1 >= current round)
+	sm.info[account.Address].WithdrawRound = big.NewInt(100)
+	err = s.Validate()
+	assert.NoError(err)
+}
+
 func TestCreateTicketBatch_NonExistantSession_ReturnsError(t *testing.T) {
 	sender := defaultSender(t)
 
