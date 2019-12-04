@@ -82,7 +82,7 @@ func (s *sender) validateSender() error {
 	}
 
 	maxWithdrawRound := new(big.Int).Add(s.roundsManager.LastInitializedRound(), big.NewInt(1))
-	if info.WithdrawRound != nil && info.WithdrawRound.Int64() != 0 && info.WithdrawRound.Cmp(maxWithdrawRound) != 1 {
+	if info.WithdrawRound.Int64() != 0 && info.WithdrawRound.Cmp(maxWithdrawRound) != 1 {
 		return fmt.Errorf("unable to validate sender: deposit and reserve is set to unlock soon")
 	}
 

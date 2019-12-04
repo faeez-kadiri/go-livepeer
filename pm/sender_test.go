@@ -117,17 +117,17 @@ func TestValidateSender(t *testing.T) {
 	assert.EqualError(err, "unable to validate sender: could not get sender info: GetSenderInfo error")
 	sm.err = nil
 
-	// sender's (withdraw round + 1 <= current round)
+	// Sender's (withdraw round + 1 <= current round)
 	sm.info[account.Address].WithdrawRound = big.NewInt(4)
 	err = s.validateSender()
 	assert.EqualError(err, "unable to validate sender: deposit and reserve is set to unlock soon")
 	sm.info[account.Address].WithdrawRound = big.NewInt(0)
 
-	// Sufficient deposit and not unlocked
+	// Not unlocked
 	err = s.validateSender()
 	assert.NoError(err)
 
-	// Sufficient deposit and unlocked but (withdrawRound + 1 >= current round)
+	// Unlocked but (withdrawRound + 1 >= current round)
 	sm.info[account.Address].WithdrawRound = big.NewInt(100)
 	err = s.validateSender()
 	assert.NoError(err)
