@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/golang/glog"
 	"github.com/livepeer/go-livepeer/common"
@@ -120,4 +121,15 @@ func fromPerc(perc float64, multiplier *big.Float) *big.Int {
 	floatRes := new(big.Float).Mul(big.NewFloat(perc), multiplier)
 	intRes, _ := floatRes.Int(nil)
 	return intRes
+}
+
+func decodeTxParams(abi abi.ABI, v map[string]interface{}, data []byte) (map[string]interface{}, error) {
+	m, err := abi.MethodById(data[:4])
+	if err != nil {
+		return map[string]interface{}{}, err
+	}
+	if err := m.Inputs.UnpackIntoMap(v, data[4:]); err != nil {
+		return map[string]interface{}{}, err
+	}
+	return v, nil
 }

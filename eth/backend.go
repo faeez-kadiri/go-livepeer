@@ -2,6 +2,7 @@ package eth
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -42,11 +43,12 @@ type Backend interface {
 type backend struct {
 	*ethclient.Client
 	methods      map[string]string
+	abiMap       map[string]abi.ABI
 	nonceManager *NonceManager
 }
 
 func NewBackend(client *ethclient.Client) (Backend, error) {
-	methods, err := makeMethodsMap()
+	methods, abiMap, err := makeMethodsMap()
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +56,7 @@ func NewBackend(client *ethclient.Client) (Backend, error) {
 	return &backend{
 		client,
 		methods,
+		abiMap,
 		NewNonceManager(client),
 	}, nil
 }
@@ -87,12 +90,23 @@ func (b *backend) SendTransaction(ctx context.Context, tx *types.Transaction) er
 		method = "unknown"
 	}
 
+	txParams := make(map[string]interface{})
+	txParams, err = decodeTxParams(b.abiMap[string(data[:4])], txParams, data)
 	if err != nil {
-		glog.Infof("\n%vEth Transaction%v\n\nInvoking transaction: \"%v\".  \nTransaction Failed: %v\n\n%v\n", strings.Repeat("*", 30), strings.Repeat("*", 30), method, err, strings.Repeat("*", 75))
 		return err
 	}
 
-	glog.Infof("\n%vEth Transaction%v\n\nInvoking transaction: \"%v\".  Hash: \"%v\". \n\n%v\n", strings.Repeat("*", 30), strings.Repeat("*", 30), method, tx.Hash().String(), strings.Repeat("*", 75))
+	var txParamsString string
+	for name, val := range txParams {
+		txParamsString += fmt.Sprintf("%v: %v   ", name, val)
+	}
+
+	if err != nil {
+		glog.Infof("\n%vEth Transaction%v\n\nInvoking transaction: \"%v\".  Transaction Inputs: \"%v\"   \nTransaction Failed: %v\n\n%v\n", strings.Repeat("*", 30), strings.Repeat("*", 30), method, txParamsString, err, strings.Repeat("*", 75))
+		return err
+	}
+
+	glog.Infof("\n%vEth Transaction%v\n\nInvoking transaction: \"%v\". Transaction Inputs: \"%v\"  Hash: \"%v\". \n\n%v\n", strings.Repeat("*", 30), strings.Repeat("*", 30), method, txParamsString, tx.Hash().String(), strings.Repeat("*", 75))
 
 	return nil
 }
@@ -125,17 +139,20 @@ func (b *backend) retryRemoteCall(remoteCall func() ([]byte, error)) (out []byte
 	return out, err
 }
 
-func makeMethodsMap() (map[string]string, error) {
+func makeMethodsMap() (map[string]string, map[string]abi.ABI, error) {
 	methods := make(map[string]string)
+	abiMap := make(map[string]abi.ABI)
+
 	for _, ABI := range abis {
 		parsedAbi, err := abi.JSON(strings.NewReader(ABI))
 		if err != nil {
-			return map[string]string{}, err
+			return map[string]string{}, map[string]abi.ABI{}, err
 		}
 		for _, m := range parsedAbi.Methods {
 			methods[string(m.ID())] = m.Name
+			abiMap[string(m.ID())] = parsedAbi
 		}
 	}
 
-	return methods, nil
+	return methods, abiMap, nil
 }
