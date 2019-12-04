@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/golang/glog"
+
+	"github.com/livepeer/go-livepeer/common"
 
 	"github.com/livepeer/lpms/ffmpeg"
 )
@@ -37,7 +40,8 @@ type EpicClassifier struct {
 func (e *EpicClassifier) Verify(params *VerifierParams) error {
 	mid, source, profiles := params.ManifestID, params.Source, params.Profiles
 	orch, res := params.Orchestrator, params.Results
-	glog.Info("\n\n\nVerifying segment....\n")
+	glog.V(common.DEBUG).Infof("Verifying segment manifestID=%s seqNo=%d\n",
+		mid, source.SeqNo)
 	src := fmt.Sprintf("http://127.0.0.1:8935/stream/%s/source/%d.ts", mid, source.SeqNo)
 	renditions := []epicRendition{}
 	for i, v := range res.Segments {
@@ -69,14 +73,25 @@ func (e *EpicClassifier) Verify(params *VerifierParams) error {
 		glog.Error("Could not marshal JSON for verifier! ", err)
 		return err
 	}
-	glog.Info("\nRequest Body\n", string(reqData))
+	glog.V(common.DEBUG).Info("Request Body: ", string(reqData))
+	startTime := time.Now()
 	resp, err := http.Post(e.Addr, "application/json", bytes.NewBuffer(reqData))
 	if err != nil {
-		glog.Error("Could not submit response ", err)
+		glog.Error("Could not submit request ", err)
 		return err
 	}
 	defer resp.Body.Close()
+	var deferErr error // short variable re-declaration of `err` bites us with defer
 	body, err := ioutil.ReadAll(resp.Body)
-	glog.Info("\n\nResponse Body\n", string(body))
+	endTime := time.Now()
+	// `defer` param evaluation semantics force us into an anonymous function
+	defer func() {
+		glog.Infof("Verification complete manifestID=%s seqNo=%d err=%v dur=%v",
+			mid, source.SeqNo, deferErr, endTime.Sub(startTime))
+	}()
+	if deferErr = err; err != nil {
+		return err
+	}
+	glog.V(common.DEBUG).Info("Response Body: ", string(body))
 	return nil
 }
