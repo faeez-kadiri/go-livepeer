@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -647,30 +646,9 @@ func TestRegisterConnection(t *testing.T) {
 	mid := core.SplitStreamIDString(t.Name()).ManifestID
 	strm := stream.NewBasicRTMPVideoStream(&streamParameters{mid: mid})
 
-	// Switch to on-chain mode
-	sender := &pm.MockSender{}
-	s.LivepeerNode.Sender = sender
-
-	// Should return an error if in on-chain mode and fail to validate sender
-	sender.On("Validate").Return(errors.New("validate sender error")).Once()
-	expErr := "cannot start broadcast session: validate sender error"
-	_, err := s.registerConnection(strm)
-	assert.EqualError(err, expErr)
-
-	// Remove node storage
-	drivers.NodeStorage = nil
-
-	// Should return a different error if in on-chain mode and sender deposit > 0
-	sender.On("Validate").Return(nil)
-
-	_, err = s.registerConnection(strm)
-	assert.NotEqual(expErr, err.Error())
-
-	// Switch to off-chain mode
-	s.LivepeerNode.Sender = nil
-
 	// Should return an error if missing node storage
-	_, err = s.registerConnection(strm)
+	drivers.NodeStorage = nil
+	_, err := s.registerConnection(strm)
 	assert.Equal(err, errStorage)
 	drivers.NodeStorage = drivers.NewMemoryDriver(nil)
 

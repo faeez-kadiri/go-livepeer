@@ -339,17 +339,6 @@ func endRTMPStreamHandler(s *LivepeerServer) func(url *url.URL, rtmpStrm stream.
 func (s *LivepeerServer) registerConnection(rtmpStrm stream.RTMPVideoStream) (*rtmpConnection, error) {
 	nonce := rand.Uint64()
 
-	// If running in on-chain mode, check for a reasonable deposit
-	if s.LivepeerNode.Sender != nil {
-		if err := s.LivepeerNode.Sender.Validate(); err != nil {
-			if monitor.Enabled {
-				monitor.StreamCreateFailed(nonce, "SenderInvalid")
-			}
-
-			return nil, fmt.Errorf("cannot start broadcast session: %v", err)
-		}
-	}
-
 	// Set up the connection tracking
 	params := streamParams(rtmpStrm)
 	if params == nil {

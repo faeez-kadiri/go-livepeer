@@ -90,7 +90,7 @@ func TestSenderEV(t *testing.T) {
 	assert.Zero(ticketEV(ticketParams.FaceValue, ticketParams.WinProb).Cmp(ev))
 }
 
-func TestValidate(t *testing.T) {
+func TestValidateSender(t *testing.T) {
 	assert := assert.New(t)
 	account := accounts.Account{
 		Address: RandAddress(),
@@ -104,33 +104,32 @@ func TestValidate(t *testing.T) {
 		Deposit:       big.NewInt(100000),
 		WithdrawRound: big.NewInt(0),
 	}
-	s := NewSender(am, rm, sm, big.NewRat(100, 1), 2)
-
+	s := &sender{
+		signer:            am,
+		roundsManager:     rm,
+		senderManager:     sm,
+		maxEV:             big.NewRat(100, 1),
+		depositMultiplier: 2,
+	}
 	// GetSenderInfo error
 	sm.err = errors.New("GetSenderInfo error")
-	err := s.Validate()
-	assert.EqualError(err, "could not get sender info: GetSenderInfo error")
+	err := s.validateSender()
+	assert.EqualError(err, "unable to validate sender: could not get sender info: GetSenderInfo error")
 	sm.err = nil
-
-	// insufficient deposit
-	sm.info[account.Address].Deposit = big.NewInt(0)
-	err = s.Validate()
-	assert.EqualError(err, "insufficient deposit")
-	sm.info[account.Address].Deposit = big.NewInt(10000)
 
 	// sender's (withdraw round + 1 <= current round)
 	sm.info[account.Address].WithdrawRound = big.NewInt(4)
-	err = s.Validate()
-	assert.EqualError(err, "deposit and reserve is set to unlock soon")
+	err = s.validateSender()
+	assert.EqualError(err, "unable to validate sender: deposit and reserve is set to unlock soon")
 	sm.info[account.Address].WithdrawRound = big.NewInt(0)
 
 	// Sufficient deposit and not unlocked
-	err = s.Validate()
+	err = s.validateSender()
 	assert.NoError(err)
 
 	// Sufficient deposit and unlocked but (withdrawRound + 1 >= current round)
 	sm.info[account.Address].WithdrawRound = big.NewInt(100)
-	err = s.Validate()
+	err = s.validateSender()
 	assert.NoError(err)
 }
 
@@ -148,7 +147,7 @@ func TestCreateTicketBatch_GetSenderInfoError_ReturnsError(t *testing.T) {
 
 	sessionID := sender.StartSession(defaultTicketParams(t, RandAddress()))
 	_, err := sender.CreateTicketBatch(sessionID, 1)
-	assert.EqualError(t, err, sm.err.Error())
+	assert.EqualError(t, err, "unable to validate sender: could not get sender info: GetSenderInfo error")
 }
 
 func TestCreateTicketBatch_EVTooHigh_ReturnsError(t *testing.T) {
