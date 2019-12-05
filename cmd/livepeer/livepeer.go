@@ -660,7 +660,9 @@ func main() {
 		// Set up verifier
 		if *verifierAddr != "" {
 			glog.Info("Using the Epic Labs classifier for verification at ", *verifierAddr)
-			server.Verifier = &verification.EpicClassifier{Addr: *verifierAddr}
+			server.Policy = &verification.Policy{Retries: 2, Verifier: &verification.EpicClassifier{Addr: *verifierAddr}}
+			// TODO Set up a default "emoty" verifier-less policy for onchain
+			//      that only checks sigs and pixels?
 		}
 	} else if n.NodeType == core.OrchestratorNode {
 		suri, err := getServiceURI(n, *serviceAddr)

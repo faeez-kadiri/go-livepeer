@@ -1,6 +1,8 @@
 package verification
 
 import (
+	"sort"
+
 	"github.com/livepeer/go-livepeer/core"
 	"github.com/livepeer/go-livepeer/net"
 
@@ -41,4 +43,73 @@ type VerificationResult interface {
 
 type Verifier interface {
 	Verify(params *VerifierParams) (VerificationResult, error)
+}
+
+type Policy struct {
+
+	// Verification function to run
+	Verifier Verifier
+
+	// Maximum number of retries until the policy chooses a winner
+	Retries int
+
+	// How often to invoke the verifier, on a per-segment basis
+	SampleRate float64 // XXX for later
+
+	// How many parallel transcodes to support
+	Redundancy int // XXX for later
+}
+
+type SegmentVerifierResults struct {
+	params *VerifierParams
+	res    VerificationResult
+}
+
+type byResScore []SegmentVerifierResults
+
+func (a byResScore) Len() int           { return len(a) }
+func (a byResScore) Swap(i, j int)      { a[i], a[j] = a[j], a[j] }
+func (a byResScore) Less(i, j int) bool { return a[i].res.Score() < a[j].res.Score() }
+
+type SegmentVerifier struct {
+	policy  *Policy
+	results []SegmentVerifierResults
+	count   int
+}
+
+func NewSegmentVerifier(p *Policy) *SegmentVerifier {
+	return &SegmentVerifier{policy: p}
+}
+
+func (sv *SegmentVerifier) Verify(params *VerifierParams) (*VerifierParams, error) {
+
+	// TODO sig checking; extract from broadcast.go
+
+	// TODO Use policy sampling rate to determine whether to invoke verifier
+	//      If not, exit early
+	res, err := sv.policy.Verifier.Verify(params)
+	if err != nil {
+		// Verification passed successfully, so use this set of params
+		return params, nil
+	}
+	sv.count++
+
+	// Append retryable errors to results
+	// The caller should terminate processing for non-retryable errors
+	if _, retry := err.(Retryable); retry {
+		r := SegmentVerifierResults{params: params, res: res}
+		sv.results = append(sv.results, r)
+	}
+
+	// Check for max retries
+	// If max hit, return best params so far
+	if sv.count >= sv.policy.Retries {
+		if len(sv.results) <= 0 {
+			return nil, nil
+		}
+		sort.Sort(byResScore(sv.results))
+		return sv.results[0].params, err
+	}
+
+	return nil, err
 }

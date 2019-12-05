@@ -26,7 +26,7 @@ import (
 	"github.com/livepeer/lpms/stream"
 )
 
-var Verifier verification.Verifier
+var Policy *verification.Policy
 var BroadcastCfg = &BroadcastConfig{}
 
 type BroadcastConfig struct {
@@ -276,15 +276,21 @@ func processSegment(cxn *rtmpConnection, seg *stream.HLSSegment) error {
 		}
 	}
 
+	var sv *verification.SegmentVerifier
+	if Policy != nil {
+		sv = verification.NewSegmentVerifier(Policy)
+	}
+
 	for {
 		// if fails, retry; rudimentary
-		if err := transcodeSegment(cxn, seg, name); err == nil {
+		if err := transcodeSegment(cxn, seg, name, sv); err == nil {
 			return nil
 		}
 	}
 }
 
-func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string) error {
+func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string,
+	verifier *verification.SegmentVerifier) error {
 
 	nonce := cxn.nonce
 	rtmpStrm := cxn.stream
@@ -437,8 +443,7 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string) 
 			return dlErr
 		}
 
-		if Verifier != nil {
-			// Ignore errors for now
+		if verifier != nil {
 			params := &verification.VerifierParams{
 				ManifestID:   sess.ManifestID,
 				Source:       seg,
@@ -446,7 +451,21 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string) 
 				Orchestrator: sess.OrchestratorInfo,
 				Results:      res,
 			}
-			Verifier.Verify(params)
+			p, err := verifier.Verify(params)
+			if _, retry := err.(verification.Retryable); retry {
+				// If retryable, means tampering was detected from this O
+				// Remove the O from the working set for now
+				// Error falls through towards end if necessary
+				cxn.sessManager.removeSession(sess)
+				glog.Error("Should be re-trying due to this error! ", err)
+			}
+			if p != nil {
+				// The returned set of results has been accepted by the verifier
+				// Ignore any errors from  the Verify call
+				// becuase we don't need to retry anymore
+				return nil
+			}
+			return err // possibly nil
 		}
 
 		ticketParams := sess.OrchestratorInfo.GetTicketParams()
