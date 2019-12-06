@@ -37,19 +37,19 @@ type VerifierParams struct {
 	Results *net.TranscodeData
 }
 
-type VerificationResult interface {
-	Score() float64
+type VerificationResult struct {
+	// Verifier specific score
+	Score float64
 
 	// Number of pixels decoded in this result
-	Pixels() []int64
+	Pixels []int64
 }
 
 type Verifier interface {
-	Verify(params *VerifierParams) (VerificationResult, error)
+	Verify(params *VerifierParams) (*VerificationResult, error)
 }
 
 type Policy struct {
-
 	// Verification function to run
 	Verifier Verifier
 
@@ -65,14 +65,14 @@ type Policy struct {
 
 type SegmentVerifierResults struct {
 	params *VerifierParams
-	res    VerificationResult
+	res    *VerificationResult
 }
 
 type byResScore []SegmentVerifierResults
 
 func (a byResScore) Len() int           { return len(a) }
 func (a byResScore) Swap(i, j int)      { a[i], a[j] = a[j], a[j] }
-func (a byResScore) Less(i, j int) bool { return a[i].res.Score() < a[j].res.Score() }
+func (a byResScore) Less(i, j int) bool { return a[i].res.Score < a[j].res.Score }
 
 type SegmentVerifier struct {
 	policy  *Policy
@@ -94,12 +94,12 @@ func (sv *SegmentVerifier) Verify(params *VerifierParams) (*VerifierParams, erro
 
 	// Check pixel counts
 	if res != nil && err == nil {
-		if len(res.Pixels()) != len(params.Results.Segments) {
+		if len(res.Pixels) != len(params.Results.Segments) {
 			// TODO make allowances for the verification algos not doing
 			//      pixel counts themselves; adapt broadcast.go verifyPixels
 			return params, nil
 		}
-		for i, v := range res.Pixels() {
+		for i, v := range res.Pixels {
 			if v != params.Results.Segments[i].Pixels {
 				err = ErrPixelMismatch
 			}

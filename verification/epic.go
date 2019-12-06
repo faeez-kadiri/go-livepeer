@@ -50,23 +50,11 @@ type epicResults struct {
 	} `json:"results"`
 }
 
-type verificationResult struct {
-	score  float64
-	pixels []int64
-}
-
 type EpicClassifier struct {
 	Addr string
 }
 
-func (vr *verificationResult) Pixels() []int64 {
-	return vr.pixels
-}
-func (vr *verificationResult) Score() float64 {
-	return vr.score
-}
-
-func epicResultsToVerificationResults(er *epicResults) (*verificationResult, error) {
+func epicResultsToVerificationResults(er *epicResults) (*VerificationResult, error) {
 	// find average of scores and build list of pixels
 	var (
 		score  float64
@@ -94,10 +82,10 @@ func epicResultsToVerificationResults(er *epicResults) (*verificationResult, err
 		pixels = append(pixels, v.Pixels)
 	}
 	score = score / float64(len(er.Results))
-	return &verificationResult{score: score, pixels: pixels}, err
+	return &VerificationResult{Score: score, Pixels: pixels}, err
 }
 
-func (e *EpicClassifier) Verify(params *VerifierParams) (VerificationResult, error) {
+func (e *EpicClassifier) Verify(params *VerifierParams) (*VerificationResult, error) {
 	mid, source, profiles := params.ManifestID, params.Source, params.Profiles
 	orch, res := params.Orchestrator, params.Results
 	glog.V(common.DEBUG).Infof("Verifying segment manifestID=%s seqNo=%d\n",
