@@ -17,6 +17,7 @@ import (
 	"github.com/livepeer/lpms/ffmpeg"
 )
 
+var ErrVerifierStatus = errors.New("VerifierStatus")
 var ErrVideoUnavailable = errors.New("VideoUnavailable")
 var ErrAudioMismatch = Retryable{errors.New("AudioMismatch")}
 var ErrTampered = Retryable{errors.New("Tampered")}
@@ -152,6 +153,9 @@ func (e *EpicClassifier) Verify(params *VerifierParams) (VerificationResult, err
 		return nil, err
 	}
 	glog.V(common.DEBUG).Info("Response Body: ", string(body))
+	if resp.StatusCode >= 400 {
+		return nil, ErrVerifierStatus
+	}
 	var er epicResults
 	err = json.Unmarshal(body, &er)
 	if deferErr = err; err != nil {
