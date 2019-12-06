@@ -183,7 +183,8 @@ func TestCreateTicketBatch_FaceValueTooHigh_ReturnsError(t *testing.T) {
 	senderAddr := sender.signer.Account().Address
 	sm := sender.senderManager.(*stubSenderManager)
 	sm.info[senderAddr] = &SenderInfo{
-		Deposit: big.NewInt(0),
+		Deposit:       big.NewInt(0),
+		WithdrawRound: big.NewInt(0),
 	}
 
 	ticketParams := TicketParams{
@@ -462,7 +463,8 @@ func defaultSender(t *testing.T) *sender {
 	rm := &stubRoundsManager{round: big.NewInt(5), blkHash: [32]byte{5}}
 	sm := newStubSenderManager()
 	sm.info[account.Address] = &SenderInfo{
-		Deposit: big.NewInt(100000),
+		Deposit:       big.NewInt(100000),
+		WithdrawRound: big.NewInt(0),
 	}
 	s := NewSender(am, rm, sm, big.NewRat(100, 1), 2)
 	return s.(*sender)
