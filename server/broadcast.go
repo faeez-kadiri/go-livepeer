@@ -490,16 +490,17 @@ func verify(verifier *verification.SegmentVerifier,
 		Results:      res,
 	}
 
-	// Verify. The params we receive, if any, are the *accepted* params
-	// The accepted params are not necessarily the same params we just have!
-	p, err := verifier.Verify(params)
+	// The return value from the verifier, if any, are the *accepted* params.
+	// The accepted params are not necessarily the same as `params` sent here.
+	// The accepted params may be from an earlier iteration if max retries hit.
+	accepted, err := verifier.Verify(params)
 	if _, retry := err.(verification.Retryable); retry {
 		// If retryable, means tampering was detected from this O
 		// Remove the O from the working set for now
 		// Error falls through towards end if necessary
 		cxn.sessManager.removeSession(sess)
 	}
-	if p != nil {
+	if accepted != nil {
 		// The returned set of results has been accepted by the verifier
 		// Ignore any errors from  the Verify call
 		// becuase we don't need to retry anymore
