@@ -19,6 +19,7 @@ import (
 	"github.com/livepeer/go-livepeer/core"
 	"github.com/livepeer/go-livepeer/drivers"
 	"github.com/livepeer/go-livepeer/monitor"
+	"github.com/livepeer/go-livepeer/net"
 	"github.com/livepeer/go-livepeer/pm"
 	"github.com/livepeer/go-livepeer/verification"
 
@@ -411,7 +412,8 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string,
 			}
 
 			// If running in on-chain mode, run pixels verification asynchronously
-			if sess.Sender != nil {
+			// Only run if a verifier is not being used
+			if sess.Sender != nil && verifier == nil {
 				go func() {
 					if err := verifyPixels(url, sess.BroadcasterOS, pixels); err != nil {
 						glog.Error(err)
@@ -444,28 +446,9 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string,
 		}
 
 		if verifier != nil {
-			params := &verification.VerifierParams{
-				ManifestID:   sess.ManifestID,
-				Source:       seg,
-				Profiles:     sess.Profiles,
-				Orchestrator: sess.OrchestratorInfo,
-				Results:      res,
+			if err := verify(verifier, cxn, sess, seg, res); err != nil {
+				return err
 			}
-			p, err := verifier.Verify(params)
-			if _, retry := err.(verification.Retryable); retry {
-				// If retryable, means tampering was detected from this O
-				// Remove the O from the working set for now
-				// Error falls through towards end if necessary
-				cxn.sessManager.removeSession(sess)
-				glog.Error("Should be re-trying due to this error! ", err)
-			}
-			if p != nil {
-				// The returned set of results has been accepted by the verifier
-				// Ignore any errors from  the Verify call
-				// becuase we don't need to retry anymore
-				return nil
-			}
-			return err // possibly nil
 		}
 
 		ticketParams := sess.OrchestratorInfo.GetTicketParams()
@@ -494,6 +477,35 @@ var sessionErrRegex = common.GenErrRegex(sessionErrStrings)
 
 func shouldStopSession(err error) bool {
 	return sessionErrRegex.MatchString(err.Error())
+}
+
+func verify(verifier *verification.SegmentVerifier,
+	cxn *rtmpConnection, sess *BroadcastSession,
+	source *stream.HLSSegment, res *net.TranscodeData) error {
+	params := &verification.VerifierParams{
+		ManifestID:   sess.ManifestID,
+		Source:       source,
+		Profiles:     sess.Profiles,
+		Orchestrator: sess.OrchestratorInfo,
+		Results:      res,
+	}
+
+	// Verify. The params we receive, if any, are the *accepted* params
+	// The accepted params are not necessarily the same params we just have!
+	p, err := verifier.Verify(params)
+	if _, retry := err.(verification.Retryable); retry {
+		// If retryable, means tampering was detected from this O
+		// Remove the O from the working set for now
+		// Error falls through towards end if necessary
+		cxn.sessManager.removeSession(sess)
+	}
+	if p != nil {
+		// The returned set of results has been accepted by the verifier
+		// Ignore any errors from  the Verify call
+		// becuase we don't need to retry anymore
+		return nil
+	}
+	return err // possibly nil
 }
 
 func verifyPixels(fname string, bos drivers.OSSession, reportedPixels int64) error {
