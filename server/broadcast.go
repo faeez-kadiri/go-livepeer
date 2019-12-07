@@ -435,11 +435,13 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string,
 			if monitor.Enabled {
 				monitor.TranscodedSegmentAppeared(nonce, seg.SeqNo, sess.Profiles[i].Name)
 			}
+			/* Should we do this conditionally in the presence of the verifier? Otherwise playlist insertions are blocked until all segments are available, which seems worse - but is necessary for verification
 			err = cpl.InsertHLSSegment(&sess.Profiles[i], seg.SeqNo, url, seg.Duration)
 			if err != nil {
 				errFunc(monitor.SegmentTranscodeErrorPlaylist, url, err)
 				return
 			}
+			*/
 		}
 
 		for i, v := range res.Segments {
@@ -459,6 +461,15 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string,
 			err := verify(verifier, cxn, sess, seg, res, segURLs)
 			if err != nil {
 				return err
+			}
+		}
+
+		for i, url := range segURLs {
+			err = cpl.InsertHLSSegment(&sess.Profiles[i], seg.SeqNo, url, seg.Duration)
+			if err != nil {
+				// We assume playlist insertion is *not* recoverable for now
+				glog.Error("Playlist insertion error; is this recoverable? nonce=%d manifestID=%s seqNo=%d err=%s", nonce, cxn.mid, seg.SeqNo, err)
+				return nil
 			}
 		}
 
