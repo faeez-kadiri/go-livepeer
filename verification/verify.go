@@ -20,7 +20,7 @@ type Retryable struct {
 
 var ErrPixelMismatch = Retryable{errors.New("PixelMismatch")}
 
-type VerifierParams struct {
+type Params struct {
 	// ManifestID should go away once we do direct push of video
 	ManifestID core.ManifestID
 
@@ -37,7 +37,7 @@ type VerifierParams struct {
 	Results *net.TranscodeData
 }
 
-type VerificationResult struct {
+type Results struct {
 	// Verifier specific score
 	Score float64
 
@@ -46,7 +46,7 @@ type VerificationResult struct {
 }
 
 type Verifier interface {
-	Verify(params *VerifierParams) (*VerificationResult, error)
+	Verify(params *Params) (*Results, error)
 }
 
 type Policy struct {
@@ -64,8 +64,8 @@ type Policy struct {
 }
 
 type SegmentVerifierResults struct {
-	params *VerifierParams
-	res    *VerificationResult
+	params *Params
+	res    *Results
 }
 
 type byResScore []SegmentVerifierResults
@@ -84,7 +84,7 @@ func NewSegmentVerifier(p *Policy) *SegmentVerifier {
 	return &SegmentVerifier{policy: p}
 }
 
-func (sv *SegmentVerifier) Verify(params *VerifierParams) (*VerifierParams, error) {
+func (sv *SegmentVerifier) Verify(params *Params) (*Params, error) {
 
 	// TODO sig checking; extract from broadcast.go
 

@@ -482,7 +482,7 @@ func shouldStopSession(err error) bool {
 func verify(verifier *verification.SegmentVerifier,
 	cxn *rtmpConnection, sess *BroadcastSession,
 	source *stream.HLSSegment, res *net.TranscodeData) error {
-	params := &verification.VerifierParams{
+	params := &verification.Params{
 		ManifestID:   sess.ManifestID,
 		Source:       source,
 		Profiles:     sess.Profiles,
