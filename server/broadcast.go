@@ -365,6 +365,7 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string,
 
 		var dlErr, saveErr error
 		segHashes := make([][]byte, len(res.Segments))
+		segURLs := make([]string, len(res.Segments))
 		n := len(res.Segments)
 		segHashLock := &sync.Mutex{}
 		cond := sync.NewCond(segHashLock)
@@ -422,6 +423,15 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string,
 				}()
 			}
 
+			// Store URLs for the verifier. Be aware that the segment is
+			// already within object storage  at this point, whether local or
+			// external. If a client were to ignore the playlist and
+			// preemptively fetch segments, they could be reading tampered
+			// data. Not an issue if the delivery protocol is being obeyed.
+			segHashLock.Lock()
+			segURLs[i] = url
+			segHashLock.Unlock()
+
 			if monitor.Enabled {
 				monitor.TranscodedSegmentAppeared(nonce, seg.SeqNo, sess.Profiles[i].Name)
 			}
@@ -446,7 +456,8 @@ func transcodeSegment(cxn *rtmpConnection, seg *stream.HLSSegment, name string,
 		}
 
 		if verifier != nil {
-			if err := verify(verifier, cxn, sess, seg, res); err != nil {
+			err := verify(verifier, cxn, sess, seg, res, segURLs)
+			if err != nil {
 				return err
 			}
 		}
@@ -479,15 +490,47 @@ func shouldStopSession(err error) bool {
 	return sessionErrRegex.MatchString(err.Error())
 }
 
-func verify(verifier *verification.SegmentVerifier,
-	cxn *rtmpConnection, sess *BroadcastSession,
-	source *stream.HLSSegment, res *net.TranscodeData) error {
+func verify(verifier *verification.SegmentVerifier, cxn *rtmpConnection,
+	sess *BroadcastSession, source *stream.HLSSegment,
+	res *net.TranscodeData, URIs []string) error {
+
+	// Cache segment contents if necessary.
+	// If we need to retry transcoding because verification fails,
+	// the the segments' OS location will be overwritten.
+	// Cache the segments so we can restore them in OS if necessary.
+	renditionData := make([][]byte, len(URIs))
+	for i, fname := range URIs {
+		if sess.BroadcasterOS.IsExternal() && drivers.IsOwnExternal(fname) {
+			// If broadcaster is using external storage and segments are there
+			// Then have the verifier use that external storage.
+			continue
+		}
+
+		// Sanity check for absolute URIs to ensure we're actually local.
+		uri, err := url.ParseRequestURI(fname)
+		if err != nil {
+			return err // Implies this is retryable?
+		}
+		memOS, ok := sess.BroadcasterOS.(*drivers.MemorySession)
+		if !uri.IsAbs() && ok {
+			data := memOS.GetData(fname)
+			if data == nil {
+				return errors.New("Missing Local Data")
+			}
+			renditionData[i] = data
+		} else {
+			return errors.New("Expected local storage but did not have it")
+		}
+	}
+
 	params := &verification.Params{
 		ManifestID:   sess.ManifestID,
 		Source:       source,
 		Profiles:     sess.Profiles,
 		Orchestrator: sess.OrchestratorInfo,
 		Results:      res,
+		URIs:         URIs,
+		Renditions:   renditionData,
 	}
 
 	// The return value from the verifier, if any, are the *accepted* params.
@@ -502,8 +545,25 @@ func verify(verifier *verification.SegmentVerifier,
 	}
 	if accepted != nil {
 		// The returned set of results has been accepted by the verifier
-		// Ignore any errors from  the Verify call
-		// becuase we don't need to retry anymore
+
+		// Check if an earlier verification attempt was the one accepted.
+		// If so, reset the local OS if we're using that since it's been
+		// overwritten with this rendition.
+		if accepted != params && !sess.BroadcasterOS.IsExternal() {
+			for i, data := range params.Renditions {
+				// Sanity check that we actually have the rendition data?
+				if len(data) <= 0 {
+					return errors.New("MissingLocalData")
+				}
+				_, err := sess.BroadcasterOS.SaveData(params.URIs[i], data)
+				if err != nil {
+					return err
+				}
+				// We *probably* don't need to reset URI[i] here
+			}
+		}
+
+		// Ignore any errors from the Verify call; don't need to retry anymore
 		return nil
 	}
 	return err // possibly nil

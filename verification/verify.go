@@ -35,6 +35,12 @@ type Params struct {
 
 	// Transcoded result metadata
 	Results *net.TranscodeData
+
+	// Rendition locations; typically when the data is in object storage
+	URIs []string
+
+	// Cached data when local object storage is used
+	Renditions [][]byte
 }
 
 type Results struct {
@@ -71,7 +77,7 @@ type SegmentVerifierResults struct {
 type byResScore []SegmentVerifierResults
 
 func (a byResScore) Len() int           { return len(a) }
-func (a byResScore) Swap(i, j int)      { a[i], a[j] = a[j], a[j] }
+func (a byResScore) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byResScore) Less(i, j int) bool { return a[i].res.Score < a[j].res.Score }
 
 type SegmentVerifier struct {
