@@ -142,7 +142,9 @@ func (e *EpicClassifier) Verify(params *VerifierParams) (*VerificationResult, er
 	}
 	glog.V(common.DEBUG).Info("Response Body: ", string(body))
 	if resp.StatusCode >= 400 {
-		return nil, ErrVerifierStatus
+		if deferErr = err; err != nil {
+			return nil, ErrVerifierStatus
+		}
 	}
 	var er epicResults
 	err = json.Unmarshal(body, &er)
