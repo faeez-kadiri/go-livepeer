@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/golang/glog"
 	"github.com/livepeer/go-livepeer/net"
 	"github.com/stretchr/testify/assert"
 )
@@ -139,7 +140,10 @@ func TestMinLSSelector_UnknownSessListSelect_Errors(t *testing.T) {
 
 	// Test error when reading stake
 	stakeRdr.err = errors.New("Stakes error")
+	errorLogsBefore := glog.Stats.Error.Lines()
 	assert.Nil(sel.unknownSessListSelect())
+	errorLogsAfter := glog.Stats.Error.Lines()
+	assert.Equal(int64(1), errorLogsAfter-errorLogsBefore)
 }
 
 func TestMinLSSelector_UnknownSessListSelect_UniqueWeights(t *testing.T) {
@@ -244,7 +248,7 @@ func TestMinLSSelector_UnknownSessListSelect_NilStakeReader(t *testing.T) {
 	// unknownSessList decreases with each selection
 	for sel.Size() > 0 {
 		sess := sel.unknownSessListSelect()
-		assert.Equal(t, sess, sessions[i])
+		assert.Same(t, sess, sessions[i])
 		i++
 	}
 }
