@@ -110,6 +110,15 @@ func (orch *orchestrator) ProcessPayment(payment net.Payment, manifestID Manifes
 
 	sender := ethcommon.BytesToAddress(payment.Sender)
 
+	ok, err := orch.isActive()
+	if err != nil {
+		return err
+	}
+
+	if !ok {
+		return fmt.Errorf("orchestrator is inactive, cannot process payments")
+	}
+
 	var (
 		didPriceErr            bool
 		acceptablePrice        bool
@@ -117,7 +126,7 @@ func (orch *orchestrator) ProcessPayment(payment net.Payment, manifestID Manifes
 		didReceiveErr          bool
 	)
 
-	err := orch.acceptablePrice(ethcommon.BytesToAddress(payment.Sender), payment.GetExpectedPrice())
+	err = orch.acceptablePrice(ethcommon.BytesToAddress(payment.Sender), payment.GetExpectedPrice())
 	acceptablePriceErr, ok := err.(AcceptableError)
 	if err != nil {
 		glog.Error(err)
@@ -314,6 +323,24 @@ func (orch *orchestrator) acceptablePrice(sender ethcommon.Address, ep *net.Pric
 		)
 	}
 	return nil
+}
+
+func (orch *orchestrator) isActive() (bool, error) {
+	currentRound, err := orch.node.Database.CurrentRound()
+	if err != nil {
+		return false, err
+	}
+
+	filter := &common.DBOrchFilter{
+		CurrentRound: currentRound,
+		Addresses:    []ethcommon.Address{orch.Address()},
+	}
+	orchs, err := orch.node.Database.SelectOrchs(filter)
+	if err != nil {
+		return false, err
+	}
+
+	return len(orchs) > 0, nil
 }
 
 func NewOrchestrator(n *LivepeerNode) *orchestrator {

@@ -14,6 +14,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/livepeer/go-livepeer/pm"
 
@@ -527,17 +528,31 @@ func TestOrchCheckCapacity(t *testing.T) {
 }
 
 func TestProcessPayment_GivenRecipientError_ReturnsNil(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
 	recipient.On("TxCostMultiplier", mock.Anything).Return(big.NewRat(1, 1), nil)
 
 	recipient.On("ReceiveTicket", mock.Anything, mock.Anything, mock.Anything).Return("", false, nil)
-	err := orch.ProcessPayment(defaultPayment(t), ManifestID("some manifest"))
+	err = orch.ProcessPayment(defaultPayment(t), ManifestID("some manifest"))
 
 	assert := assert.New(t)
 	assert.Nil(err)
@@ -597,18 +612,67 @@ func TestProcessPayment_GivenNilRecipient_ReturnsNilError(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+func TestProcessPayment_ActiveOrchestrator(t *testing.T) {
+	assert := assert.New(t)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
+
+	recipient := new(pm.MockRecipient)
+	n.Recipient = recipient
+	n.Balances = NewAddressBalances(5 * time.Second)
+
+	orch := NewOrchestrator(n)
+	orch.address = pm.RandAddress()
+	orch.node.SetBasePrice(big.NewRat(0, 1))
+
+	// orchestrator inactive -> error
+	err = orch.ProcessPayment(defaultPayment(t), ManifestID("some manifest"))
+	expErr := fmt.Sprintf("orchestrator is inactive, cannot process payments")
+	assert.EqualError(err, expErr)
+
+	// orchestrator is active -> no error
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+	recipient.On("TxCostMultiplier", mock.Anything).Return(big.NewRat(1, 1), nil)
+	recipient.On("ReceiveTicket", mock.Anything, mock.Anything, mock.Anything).Return("some sessionID", false, nil)
+	err = orch.ProcessPayment(defaultPayment(t), ManifestID("some manifest"))
+	time.Sleep(time.Millisecond * 20)
+	assert.NoError(err)
+}
+
 func TestProcessPayment_GivenLosingTicket_DoesNotRedeem(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
 	recipient.On("TxCostMultiplier", mock.Anything).Return(big.NewRat(1, 1), nil)
 	recipient.On("ReceiveTicket", mock.Anything, mock.Anything, mock.Anything).Return("some sessionID", false, nil)
 
-	err := orch.ProcessPayment(defaultPayment(t), ManifestID("some manifest"))
+	err = orch.ProcessPayment(defaultPayment(t), ManifestID("some manifest"))
 
 	time.Sleep(time.Millisecond * 20)
 	assert := assert.New(t)
@@ -617,13 +681,26 @@ func TestProcessPayment_GivenLosingTicket_DoesNotRedeem(t *testing.T) {
 }
 
 func TestProcessPayment_GivenWinningTicket_RedeemError(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
 
 	manifestID := ManifestID("some manifest")
 	sessionID := "some sessionID"
@@ -634,7 +711,7 @@ func TestProcessPayment_GivenWinningTicket_RedeemError(t *testing.T) {
 
 	errorLogsBefore := glog.Stats.Error.Lines()
 
-	err := orch.ProcessPayment(defaultPayment(t), manifestID)
+	err = orch.ProcessPayment(defaultPayment(t), manifestID)
 
 	time.Sleep(time.Millisecond * 20)
 	errorLogsAfter := glog.Stats.Error.Lines()
@@ -645,13 +722,27 @@ func TestProcessPayment_GivenWinningTicket_RedeemError(t *testing.T) {
 }
 
 func TestProcessPayment_GivenWinningTicket_Redeems(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
 	manifestID := ManifestID("some manifest")
 	sessionID := "some sessionID"
 
@@ -661,7 +752,7 @@ func TestProcessPayment_GivenWinningTicket_Redeems(t *testing.T) {
 
 	errorLogsBefore := glog.Stats.Error.Lines()
 
-	err := orch.ProcessPayment(defaultPayment(t), manifestID)
+	err = orch.ProcessPayment(defaultPayment(t), manifestID)
 
 	time.Sleep(time.Millisecond * 20)
 	errorLogsAfter := glog.Stats.Error.Lines()
@@ -672,13 +763,27 @@ func TestProcessPayment_GivenWinningTicket_Redeems(t *testing.T) {
 }
 
 func TestProcessPayment_GivenMultipleWinningTickets_RedeemsAll(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
 	manifestID := ManifestID("some manifest")
 	sessionID := "some sessionID"
 
@@ -710,7 +815,7 @@ func TestProcessPayment_GivenMultipleWinningTickets_RedeemsAll(t *testing.T) {
 		CreationRoundBlockHash: ethcommon.BytesToHash(payment.ExpirationParams.CreationRoundBlockHash),
 	}
 
-	err := orch.ProcessPayment(payment, manifestID)
+	err = orch.ProcessPayment(payment, manifestID)
 
 	time.Sleep(time.Millisecond * 20)
 	assert := assert.New(t)
@@ -728,13 +833,27 @@ func TestProcessPayment_GivenMultipleWinningTickets_RedeemsAll(t *testing.T) {
 }
 
 func TestProcessPayment_GivenConcurrentWinningTickets_RedeemsAll(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
 	manifestIDs := make([]string, 5)
 
 	for i := 0; i < 5; i++ {
@@ -774,13 +893,26 @@ func TestProcessPayment_GivenConcurrentWinningTickets_RedeemsAll(t *testing.T) {
 }
 
 func TestProcessPayment_GivenReceiveTicketError_ReturnsError(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
 	manifestID := ManifestID("some manifest")
 
 	recipient.On("TxCostMultiplier", mock.Anything).Return(big.NewRat(1, 1), nil)
@@ -800,7 +932,7 @@ func TestProcessPayment_GivenReceiveTicketError_ReturnsError(t *testing.T) {
 		)
 	}
 
-	err := orch.ProcessPayment(*defaultPaymentWithTickets(t, senderParams), manifestID)
+	err = orch.ProcessPayment(*defaultPaymentWithTickets(t, senderParams), manifestID)
 
 	time.Sleep(time.Millisecond * 20)
 	assert := assert.New(t)
@@ -813,13 +945,26 @@ func TestProcessPayment_GivenReceiveTicketError_ReturnsError(t *testing.T) {
 
 // Check that an Acceptable error increases the credit
 func TestProcessPayment_AcceptablePaymentError_IncreasesCreditBalance(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
 
 	manifestID := ManifestID("some manifest")
 	acceptableError := pm.NewMockReceiveError(errors.New("Acceptable ReceiveTicket error"), true)
@@ -839,7 +984,7 @@ func TestProcessPayment_AcceptablePaymentError_IncreasesCreditBalance(t *testing
 	payment.TicketParams.FaceValue = ticket.FaceValue.Bytes()
 	payment.TicketParams.WinProb = ticket.WinProb.Bytes()
 
-	err := orch.ProcessPayment(payment, manifestID)
+	err = orch.ProcessPayment(payment, manifestID)
 	assert.Error(err)
 	acceptableErr, ok := err.(AcceptableError)
 	assert.True(ok)
@@ -849,13 +994,27 @@ func TestProcessPayment_AcceptablePaymentError_IncreasesCreditBalance(t *testing
 
 // Check that an unacceptable error does NOT increase the credit
 func TestProcessPayment_UnacceptablePaymentError_DoesNotIncreaseCreditBalance(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
 	manifestID := ManifestID("some manifest")
 	unacceptableError := pm.NewMockReceiveError(errors.New("Unacceptable ReceiveTicket error"), false)
 
@@ -864,7 +1023,7 @@ func TestProcessPayment_UnacceptablePaymentError_DoesNotIncreaseCreditBalance(t 
 	assert := assert.New(t)
 
 	payment := defaultPayment(t)
-	err := orch.ProcessPayment(payment, manifestID)
+	err = orch.ProcessPayment(payment, manifestID)
 	assert.Error(err)
 	acceptableErr, ok := err.(AcceptableError)
 	assert.True(ok)
@@ -873,13 +1032,27 @@ func TestProcessPayment_UnacceptablePaymentError_DoesNotIncreaseCreditBalance(t 
 }
 
 func TestProcesspayment_NoPriceError_IncreasesCredit(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
-	orch.node.SetBasePrice(big.NewRat(5, 1))
+
+	orch.address = pm.RandAddress()
+	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
 	manifestID := ManifestID("some manifest")
 	sender := pm.RandAddress()
 
@@ -906,19 +1079,32 @@ func TestProcesspayment_NoPriceError_IncreasesCredit(t *testing.T) {
 		PixelsPerUnit: 1,
 	}
 
-	err := orch.ProcessPayment(payment, manifestID)
+	err = orch.ProcessPayment(payment, manifestID)
 	assert.Nil(err)
 	assert.Zero(orch.node.Balances.Balance(sender, manifestID).Cmp(ticket.EV()))
 }
 
 func TestProcessPayment_AcceptablePriceError_IncreasesCredit_ReturnsError(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(5, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(10, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
 	manifestID := ManifestID("some manifest")
 	sender := pm.RandAddress()
 
@@ -945,7 +1131,7 @@ func TestProcessPayment_AcceptablePriceError_IncreasesCredit_ReturnsError(t *tes
 		PixelsPerUnit: 1,
 	}
 
-	err := orch.ProcessPayment(payment, manifestID)
+	err = orch.ProcessPayment(payment, manifestID)
 	assert.Error(err)
 	acceptableErr, ok := err.(AcceptableError)
 	assert.True(ok)
@@ -955,13 +1141,27 @@ func TestProcessPayment_AcceptablePriceError_IncreasesCredit_ReturnsError(t *tes
 }
 
 func TestProcessPayment_UnacceptablePriceError_ReturnsError_DoesNotIncreaseCredit(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(5, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
 	manifestID := ManifestID("some manifest")
 	sender := pm.RandAddress()
 
@@ -988,7 +1188,7 @@ func TestProcessPayment_UnacceptablePriceError_ReturnsError_DoesNotIncreaseCredi
 		PixelsPerUnit: 1,
 	}
 
-	err := orch.ProcessPayment(payment, manifestID)
+	err = orch.ProcessPayment(payment, manifestID)
 	assert.Error(err)
 	acceptableErr, ok := err.(AcceptableError)
 	assert.True(ok)
@@ -1094,14 +1294,58 @@ func TestAcceptablePrice_PriceInfoError_ReturnsErr(t *testing.T) {
 	assert.False(ok)
 }
 
+func TestIsActive(t *testing.T) {
+	assert := assert.New(t)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
+	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
+
+	// active
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
+	ok, err := orch.isActive()
+	assert.True(ok)
+	assert.NoError(err)
+
+	// inactive
+	dbh.SetCurrentRound(big.NewInt(1000))
+	ok, err = orch.isActive()
+	assert.False(ok)
+	assert.NoError(err)
+}
+
 func TestSufficientBalance_IsSufficient_ReturnsTrue(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
 	manifestID := ManifestID("some manifest")
 
 	recipient.On("TxCostMultiplier", mock.Anything).Return(big.NewRat(1, 1), nil)
@@ -1113,20 +1357,34 @@ func TestSufficientBalance_IsSufficient_ReturnsTrue(t *testing.T) {
 	payment.TicketParams.FaceValue = big.NewInt(100).Bytes()
 	payment.TicketParams.WinProb = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1)).Bytes()
 
-	err := orch.ProcessPayment(payment, manifestID)
+	err = orch.ProcessPayment(payment, manifestID)
 	assert.Nil(err)
 	recipient.On("EV").Return(big.NewRat(100, 1))
 	assert.True(orch.SufficientBalance(ethcommon.BytesToAddress(payment.Sender), manifestID))
 }
 
 func TestSufficientBalance_IsNotSufficient_ReturnsFalse(t *testing.T) {
-	n, _ := NewLivepeerNode(nil, "", nil)
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	n, _ := NewLivepeerNode(nil, "", dbh)
 	n.Balances = NewAddressBalances(5 * time.Second)
 	recipient := new(pm.MockRecipient)
 	n.Recipient = recipient
 	orch := NewOrchestrator(n)
+
+	orch.address = pm.RandAddress()
 	orch.node.SetBasePrice(big.NewRat(0, 1))
 	orch.node.ErrorMonitor = NewErrorMonitor(0, make(chan struct{}))
+
+	dbh.UpdateOrch(&common.DBOrch{
+		EthereumAddr:      orch.Address().Hex(),
+		ActivationRound:   1,
+		DeactivationRound: 999,
+	})
+	dbh.SetCurrentRound(big.NewInt(10))
+
 	manifestID := ManifestID("some manifest")
 
 	recipient.On("TxCostMultiplier", mock.Anything).Return(big.NewRat(1, 1), nil)
@@ -1141,7 +1399,7 @@ func TestSufficientBalance_IsNotSufficient_ReturnsFalse(t *testing.T) {
 	payment.TicketParams.FaceValue = big.NewInt(100).Bytes()
 	payment.TicketParams.WinProb = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1)).Bytes()
 
-	err := orch.ProcessPayment(payment, manifestID)
+	err = orch.ProcessPayment(payment, manifestID)
 	assert.Nil(err)
 	recipient.On("EV").Return(big.NewRat(10000, 1))
 	assert.False(orch.SufficientBalance(ethcommon.BytesToAddress(payment.Sender), manifestID))
