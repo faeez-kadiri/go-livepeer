@@ -16,27 +16,29 @@ import (
 const maxFutureRound = int64(math.MaxInt64)
 
 type OrchestratorWatcher struct {
-	store   common.OrchestratorStore
-	dec     *EventDecoder
-	watcher BlockWatcher
-	lpEth   eth.LivepeerEthClient
-	rw      EventWatcher
-	quit    chan struct{}
+	store         common.OrchestratorStore
+	dec           *EventDecoder
+	watcher       BlockWatcher
+	lpEth         eth.LivepeerEthClient
+	rw            EventWatcher
+	quit          chan struct{}
+	addressFilter []ethcommon.Address
 }
 
-func NewOrchestratorWatcher(bondingManagerAddr ethcommon.Address, watcher BlockWatcher, store common.OrchestratorStore, lpEth eth.LivepeerEthClient, rw EventWatcher) (*OrchestratorWatcher, error) {
+func NewOrchestratorWatcher(bondingManagerAddr ethcommon.Address, watcher BlockWatcher, store common.OrchestratorStore, lpEth eth.LivepeerEthClient, rw EventWatcher, addressFilter []ethcommon.Address) (*OrchestratorWatcher, error) {
 	dec, err := NewEventDecoder(bondingManagerAddr, contracts.BondingManagerABI)
 	if err != nil {
 		return nil, err
 	}
 
 	return &OrchestratorWatcher{
-		store:   store,
-		dec:     dec,
-		watcher: watcher,
-		lpEth:   lpEth,
-		rw:      rw,
-		quit:    make(chan struct{}),
+		store:         store,
+		dec:           dec,
+		watcher:       watcher,
+		lpEth:         lpEth,
+		rw:            rw,
+		addressFilter: addressFilter,
+		quit:          make(chan struct{}),
 	}, nil
 }
 
@@ -107,6 +109,12 @@ func (ow *OrchestratorWatcher) handleTranscoderActivated(log types.Log) error {
 		return err
 	}
 
+	if len(ow.addressFilter) > 0 {
+		if !containsAddress(ow.addressFilter, transcoderActivated.Transcoder) {
+			return nil
+		}
+	}
+
 	if !log.Removed {
 		uri, err := ow.lpEth.GetServiceURI(transcoderActivated.Transcoder)
 		if err != nil {
@@ -140,6 +148,12 @@ func (ow *OrchestratorWatcher) handleTranscoderDeactivated(log types.Log) error 
 	var transcoderDeactivated contracts.BondingManagerTranscoderDeactivated
 	if err := ow.dec.Decode("TranscoderDeactivated", log, &transcoderDeactivated); err != nil {
 		return err
+	}
+
+	if len(ow.addressFilter) > 0 {
+		if !containsAddress(ow.addressFilter, transcoderDeactivated.Transcoder) {
+			return nil
+		}
 	}
 
 	if !log.Removed {
@@ -199,4 +213,13 @@ func (ow *OrchestratorWatcher) cacheOrchestratorStake(addr ethcommon.Address, ro
 	}
 
 	return nil
+}
+
+func containsAddress(list []ethcommon.Address, item ethcommon.Address) bool {
+	for _, v := range list {
+		if v == item {
+			return true
+		}
+	}
+	return false
 }

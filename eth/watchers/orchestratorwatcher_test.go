@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/glog"
 	"github.com/livepeer/go-livepeer/eth"
 	"github.com/livepeer/go-livepeer/eth/blockwatch"
@@ -22,7 +24,7 @@ func TestOrchWatcher_WatchAndStop(t *testing.T) {
 	lpEth := &eth.StubClient{}
 	rw := &stubRoundsWatcher{}
 
-	ow, err := NewOrchestratorWatcher(stubBondingManagerAddr, watcher, stubStore, lpEth, rw)
+	ow, err := NewOrchestratorWatcher(stubBondingManagerAddr, watcher, stubStore, lpEth, rw, []ethcommon.Address{})
 	assert.Nil(err)
 
 	go ow.Watch()
@@ -48,7 +50,7 @@ func TestOrchWatcher_HandleLog_TranscoderActivated(t *testing.T) {
 	}
 	rw := &stubRoundsWatcher{}
 
-	ow, err := NewOrchestratorWatcher(stubBondingManagerAddr, watcher, stubStore, lpEth, rw)
+	ow, err := NewOrchestratorWatcher(stubBondingManagerAddr, watcher, stubStore, lpEth, rw, []ethcommon.Address{})
 	assert.Nil(err)
 
 	header := defaultMiniHeader()
@@ -96,6 +98,35 @@ func TestOrchWatcher_HandleLog_TranscoderActivated(t *testing.T) {
 	errorLogsAfter = glog.Stats.Error.Lines()
 	assert.Equal(int64(1), errorLogsAfter-errorLogsBefore)
 	lpEth.Err = nil
+
+	// test with addressFilter (no-op)
+	// should not alter ActivationRound nor ServiceURI in stubStore
+	filterAddress := pm.RandAddress()
+	ow.addressFilter = []ethcommon.Address{filterAddress}
+	// transcoderActivated log is at index 1 in blockEvent.header.Logs
+	blockEvent.Type = blockwatch.Added
+	blockEvent.BlockHeader.Logs[1].Data = ethcommon.LeftPadBytes(big.NewInt(500).Bytes(), 32)
+	watcher.sink <- []*blockwatch.Event{blockEvent}
+	time.Sleep(2 * time.Millisecond)
+	assert.Equal(stubStore.activationRound, int64(5))
+	assert.Equal(stubStore.serviceURI, "http://mytranscoder.lpt:0000")
+
+	// test with addressFilter
+	// should only change values for log pertaining to filterAddress
+	log2 := newStubBaseLog()
+	log2.Address = stubBondingManagerAddr
+	log2Transcoder := ethcommon.LeftPadBytes(filterAddress.Bytes(), 32)
+	var transcoderTopic ethcommon.Hash
+	copy(transcoderTopic[:], log2Transcoder[:])
+	log2.Topics = []ethcommon.Hash{
+		crypto.Keccak256Hash([]byte("TranscoderActivated(address,uint256)")),
+		transcoderTopic,
+	}
+	log2.Data = ethcommon.LeftPadBytes(big.NewInt(1000).Bytes(), 32)
+	blockEvent.BlockHeader.Logs = append(blockEvent.BlockHeader.Logs, log2)
+	watcher.sink <- []*blockwatch.Event{blockEvent}
+	time.Sleep(2 * time.Millisecond)
+	assert.Equal(stubStore.activationRound, int64(1000))
 }
 
 func TestOrchWatcher_HandleLog_TranscoderDeactivated(t *testing.T) {
@@ -111,7 +142,7 @@ func TestOrchWatcher_HandleLog_TranscoderDeactivated(t *testing.T) {
 	}
 	rw := &stubRoundsWatcher{}
 
-	ow, err := NewOrchestratorWatcher(stubBondingManagerAddr, watcher, stubStore, lpEth, rw)
+	ow, err := NewOrchestratorWatcher(stubBondingManagerAddr, watcher, stubStore, lpEth, rw, []ethcommon.Address{})
 	assert.Nil(err)
 
 	header := defaultMiniHeader()
@@ -153,7 +184,7 @@ func TestOrchWatcher_HandleRoundEvent_CacheOrchestratorStake(t *testing.T) {
 	}
 	rw := &stubRoundsWatcher{}
 
-	ow, err := NewOrchestratorWatcher(stubBondingManagerAddr, watcher, stubStore, lpEth, rw)
+	ow, err := NewOrchestratorWatcher(stubBondingManagerAddr, watcher, stubStore, lpEth, rw, []ethcommon.Address{})
 	require.Nil(err)
 	require.NotNil(ow)
 
@@ -204,4 +235,16 @@ func TestOrchWatcher_HandleRoundEvent_CacheOrchestratorStake(t *testing.T) {
 	errorLogsAfter = glog.Stats.Error.Lines()
 	assert.Equal(int64(1), errorLogsAfter-errorLogsBefore)
 	stubStore.updateErr = nil
+}
+
+func TestContainsAddress(t *testing.T) {
+	assert := assert.New(t)
+	addr1 := ethcommon.HexToAddress("0x79f709b01033dfDBf065cfF7a1Abe7C72011D3EB")
+	addr2 := ethcommon.HexToAddress("0xaa5c4244f05c92781c4f259913319d8ba1acf05e")
+	addr3 := ethcommon.HexToAddress("0xf4e1507486dfe411785b00d7d00a1f1a484f00e6")
+	list := []ethcommon.Address{addr1, addr2}
+
+	assert.True(containsAddress(list, addr1))
+	assert.True(containsAddress(list, addr2))
+	assert.False(containsAddress(list, addr3))
 }
