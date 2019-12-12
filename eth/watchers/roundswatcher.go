@@ -8,6 +8,7 @@ import (
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/livepeer/go-livepeer/common"
 	"github.com/livepeer/go-livepeer/eth/contracts"
 
 	"github.com/golang/glog"
@@ -30,10 +31,11 @@ type RoundsWatcher struct {
 	watcher BlockWatcher
 	lpEth   eth.LivepeerEthClient
 	dec     *EventDecoder
+	db      *common.DB
 }
 
 // NewRoundsWatcher creates a new instance of RoundsWatcher and sets the initial cache through an RPC call to an ethereum node
-func NewRoundsWatcher(roundsManagerAddr ethcommon.Address, watcher BlockWatcher, lpEth eth.LivepeerEthClient) (*RoundsWatcher, error) {
+func NewRoundsWatcher(roundsManagerAddr ethcommon.Address, watcher BlockWatcher, lpEth eth.LivepeerEthClient, db *common.DB) (*RoundsWatcher, error) {
 	dec, err := NewEventDecoder(roundsManagerAddr, contracts.RoundsManagerABI)
 	if err != nil {
 		return nil, fmt.Errorf("error creating decoder: %v", err)
@@ -44,6 +46,7 @@ func NewRoundsWatcher(roundsManagerAddr ethcommon.Address, watcher BlockWatcher,
 		watcher: watcher,
 		lpEth:   lpEth,
 		dec:     dec,
+		db:      db,
 	}, nil
 }
 
@@ -61,11 +64,12 @@ func (rw *RoundsWatcher) LastInitializedBlockHash() [32]byte {
 	return rw.lastInitializedBlockHash
 }
 
-func (rw *RoundsWatcher) setLastInitializedRound(round *big.Int, hash [32]byte) {
+func (rw *RoundsWatcher) setLastInitializedRound(round *big.Int, hash [32]byte) error {
 	rw.mu.Lock()
 	defer rw.mu.Unlock()
 	rw.lastInitializedRound = round
 	rw.lastInitializedBlockHash = hash
+	return rw.db.SetCurrentRound(round)
 }
 
 func (rw *RoundsWatcher) GetTranscoderPoolSize() *big.Int {
@@ -86,11 +90,15 @@ func (rw *RoundsWatcher) Watch() error {
 	if err != nil {
 		return fmt.Errorf("error fetching initial lastInitializedRound value: %v", err)
 	}
+
 	bh, err := rw.lpEth.BlockHashForRound(lr)
 	if err != nil {
 		return fmt.Errorf("error fetching initial lastInitializedBlockHash value: %v", err)
 	}
-	rw.setLastInitializedRound(lr, bh)
+
+	if err := rw.setLastInitializedRound(lr, bh); err != nil {
+		return fmt.Errorf("error setting last intialized round: %v", err)
+	}
 
 	if err := rw.fetchAndSetTranscoderPoolSize(); err != nil {
 		return fmt.Errorf("error fetching initial transcoderPoolSize: %v", err)
@@ -157,17 +165,18 @@ func (rw *RoundsWatcher) handleLog(log types.Log) error {
 	rw.subFeed.Send(log)
 
 	if log.Removed {
-		lr, err := rw.lpEth.LastInitializedRound()
+		nr.Round, err = rw.lpEth.LastInitializedRound()
 		if err != nil {
 			return err
 		}
-		bh, err := rw.lpEth.BlockHashForRound(lr)
+		nr.BlockHash, err = rw.lpEth.BlockHashForRound(nr.Round)
 		if err != nil {
 			return err
 		}
-		rw.setLastInitializedRound(lr, bh)
-	} else {
-		rw.setLastInitializedRound(nr.Round, nr.BlockHash)
+	}
+
+	if err := rw.setLastInitializedRound(nr.Round, nr.BlockHash); err != nil {
+		return err
 	}
 
 	// Get the active transcoder pool size when we receive a NewRound event

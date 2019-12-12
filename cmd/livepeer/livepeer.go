@@ -397,7 +397,7 @@ func main() {
 		// Wait until all event watchers have been initialized before starting the block watcher
 		blockWatcher := blockwatch.New(blockWatcherCfg)
 
-		roundsWatcher, err = watchers.NewRoundsWatcher(addrMap["RoundsManager"], blockWatcher, n.Eth)
+		roundsWatcher, err = watchers.NewRoundsWatcher(addrMap["RoundsManager"], blockWatcher, n.Eth, n.Database)
 		if err != nil {
 			glog.Errorf("Failed to setup roundswatcher: %v", err)
 			return

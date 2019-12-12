@@ -7,6 +7,7 @@ import (
 	"time"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/livepeer/go-livepeer/common"
 	"github.com/livepeer/go-livepeer/eth"
 	"github.com/livepeer/go-livepeer/eth/blockwatch"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +16,11 @@ import (
 
 func TestSetAndGet_LastInitializedRound_LastInitializedBlockHash(t *testing.T) {
 	assert := assert.New(t)
-	rw := &RoundsWatcher{}
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	rw := &RoundsWatcher{db: dbh}
 	round := big.NewInt(5)
 	var hash [32]byte
 	copy(hash[:], "hello world")
@@ -31,7 +36,11 @@ func TestSetAndGet_LastInitializedRound_LastInitializedBlockHash(t *testing.T) {
 
 func TestSetAndGet_TranscoderPoolSize(t *testing.T) {
 	assert := assert.New(t)
-	rw := &RoundsWatcher{}
+	dbh, dbraw, err := common.TempDB(t)
+	require.Nil(t, err)
+	defer dbh.Close()
+	defer dbraw.Close()
+	rw := &RoundsWatcher{db: dbh}
 	size := big.NewInt(50)
 	rw.setTranscoderPoolSize(size)
 	assert.Equal(size, rw.transcoderPoolSize)
@@ -44,8 +53,13 @@ func TestRoundsWatcher_WatchAndStop(t *testing.T) {
 	lpEth := &eth.StubClient{
 		PoolSize: size,
 	}
+
+	dbh, dbraw, err := common.TempDB(t)
+	defer dbh.Close()
+	defer dbraw.Close()
+
 	watcher := &stubBlockWatcher{}
-	rw, err := NewRoundsWatcher(stubRoundsManagerAddr, watcher, lpEth)
+	rw, err := NewRoundsWatcher(stubRoundsManagerAddr, watcher, lpEth, dbh)
 	assert.Nil(err)
 
 	header := defaultMiniHeader()
@@ -70,6 +84,9 @@ func TestRoundsWatcher_WatchAndStop(t *testing.T) {
 	copy(expectedHashForRound[:], newRoundEvent.Data[:])
 	assert.Equal(bhForRound, expectedHashForRound)
 	assert.Equal(size, rw.GetTranscoderPoolSize())
+	dbRound, err := dbh.CurrentRound()
+	require.Nil(t, err)
+	assert.Equal(dbRound, lastRound)
 
 	// Test no NewRound events, values on rw remain the same
 	rw.setTranscoderPoolSize(big.NewInt(10))
@@ -82,6 +99,9 @@ func TestRoundsWatcher_WatchAndStop(t *testing.T) {
 	copy(expectedHashForRound[:], newRoundEvent.Data[:])
 	assert.Equal(bhForRound, expectedHashForRound)
 	assert.Equal(big.NewInt(10), rw.GetTranscoderPoolSize())
+	dbRound, err = dbh.CurrentRound()
+	require.Nil(t, err)
+	assert.Equal(dbRound, lastRound)
 
 	// Test RPC paths (event removed)
 	blockEvent.BlockHeader.Logs = append(blockEvent.BlockHeader.Logs, newRoundEvent)
@@ -93,6 +113,9 @@ func TestRoundsWatcher_WatchAndStop(t *testing.T) {
 	assert.Equal(lastRound.Int64(), int64(0))
 	assert.Equal(bhForRound, [32]byte{})
 	assert.Equal(size, rw.GetTranscoderPoolSize())
+	dbRound, err = dbh.CurrentRound()
+	require.Nil(t, err)
+	assert.Equal(dbRound, lastRound)
 
 	// Test Stop
 	rw.Stop()
@@ -113,7 +136,12 @@ func TestRoundsWatcher_WatchAndStop(t *testing.T) {
 func TestRoundsWatcher_HandleLog(t *testing.T) {
 	lpEth := &eth.StubClient{}
 	watcher := &stubBlockWatcher{}
-	rw, err := NewRoundsWatcher(stubRoundsManagerAddr, watcher, lpEth)
+
+	dbh, dbraw, err := common.TempDB(t)
+	defer dbh.Close()
+	defer dbraw.Close()
+
+	rw, err := NewRoundsWatcher(stubRoundsManagerAddr, watcher, lpEth, dbh)
 	require.Nil(t, err)
 
 	assert := assert.New(t)
