@@ -394,10 +394,29 @@ func (db *DB) ChainID() (*big.Int, error) {
 }
 
 func (db *DB) SetChainID(id *big.Int) error {
-	if err := db.updateKVStore("chainID", id.String()); err != nil {
-		return err
+	return db.updateKVStore("chainID", id.String())
+}
+
+func (db *DB) CurrentRound() (*big.Int, error) {
+	round, err := db.selectKVStore("currentRound")
+	if err != nil {
+		return nil, err
 	}
-	return nil
+
+	if round == "" {
+		return nil, nil
+	}
+
+	r, ok := new(big.Int).SetString(round, 10)
+	if !ok {
+		return nil, fmt.Errorf("unable to convert current round string to big.Int")
+	}
+
+	return r, nil
+}
+
+func (db *DB) SetCurrentRound(round *big.Int) error {
+	return db.updateKVStore("currentRound", round.String())
 }
 
 func (db *DB) selectKVStore(key string) (string, error) {

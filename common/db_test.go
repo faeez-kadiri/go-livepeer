@@ -102,6 +102,24 @@ func TestSetChainID(t *testing.T) {
 	assert.Equal(chainID, expectedChainIDInt)
 }
 
+func TestCurrentRound(t *testing.T) {
+	require := require.New(t)
+	assert := assert.New(t)
+	expectedRound, _ := new(big.Int).SetString("100", 10)
+
+	dbh, dbraw, err := TempDB(t)
+	require.Nil(err)
+
+	defer dbh.Close()
+	defer dbraw.Close()
+
+	err = dbh.SetCurrentRound(expectedRound)
+	assert.Nil(err)
+	round, err := dbh.CurrentRound()
+	assert.Nil(err)
+	assert.Equal(round, expectedRound)
+}
+
 func TestDBLastSeenBlock(t *testing.T) {
 	dbh, dbraw, err := TempDB(t)
 	if err != nil {
