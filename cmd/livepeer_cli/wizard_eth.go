@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"net/url"
+	"github.com/atotto/clipboard"
 	"io"
+	"net/url"
 	"strings"
 )
 
@@ -24,7 +25,7 @@ func (w *wizard) signMessage() {
 	mystr := []string{""}
 	text, err := w.in.ReadString('\n')
 	mystr = append(mystr, text)
-	for ; err != io.EOF ; {
+	for err != io.EOF {
 		if err != io.EOF {
 			text, err = w.in.ReadString('\n')
 			mystr = append(mystr, text)
@@ -32,10 +33,11 @@ func (w *wizard) signMessage() {
 	}
 	message := strings.Join(mystr, "")
 	message = strings.TrimSpace(message)
-	fmt.Println(message)
 	val := url.Values{
 		"message": {fmt.Sprintf("%v", message)},
 	}
-	r := httpPostWithParams(fmt.Sprintf("http://%v:%v/signMessage", w.host, w.httpPort), val)
-	fmt.Println(fmt.Sprintf("%x", r))
+	signedMessage := httpPostWithParams(fmt.Sprintf("http://%v:%v/signMessage", w.host, w.httpPort), val)
+	clipboard.WriteAll(fmt.Sprintf("0x%x", signedMessage))
+	text, _ = clipboard.ReadAll()
+	fmt.Println(fmt.Sprintf("\n\nSigned message copied to clipboard:\n%s", text))
 }

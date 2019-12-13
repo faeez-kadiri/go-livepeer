@@ -46,23 +46,3 @@ func TestSetOrchestratorPriceInfo(t *testing.T) {
 	err = s.setOrchestratorPriceInfo("1", "-5")
 	assert.EqualErrorf(t, err, err.Error(), "pixels per unit must be greater than 0, provided %d\n", -5)
 }
-
-/*func TestMessageSign(t *testing.T) {
-	//assert.True(t, 1 == 2)
-	t.Log("Hello im a test \n")
-	if S == nil {
-		n, _ := core.NewLivepeerNode(nil, "./tmp", nil)
-		S = NewLivepeerServer("127.0.0.1:1938", "127.0.0.1:8080", n)
-		go S.StartMediaServer(context.Background(), "")
-		go S.StartCliWebserver("127.0.0.1:8938")
-	}
-	cli := S.cliWebServerHandlers("")
-	ts := httptest.NewServer(cli)
-	client := ts.Client()
-	resp, err := client.PostForm(ts.URL+"/signMessage", url.Values{"message":{"abcdef"}})
-	assert.True(t, err == nil)
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("Body:")
-	fmt.Println(body)
-	assert.True(t, 1==1)
-}*/

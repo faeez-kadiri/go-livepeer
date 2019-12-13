@@ -83,7 +83,7 @@ func (s *LivepeerServer) cliWebServerHandlers(bindAddr string) *http.ServeMux {
 		message := r.FormValue("message")
 		signed, err := s.LivepeerNode.Eth.Sign([]byte(message))
 		if err != nil {
-			glog.Errorf("error: %v",  err)
+			glog.Errorf("error: %v", err)
 		}
 		w.Write([]byte(signed))
 	})
