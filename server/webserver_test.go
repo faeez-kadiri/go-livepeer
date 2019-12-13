@@ -4,12 +4,6 @@ import (
 	"math/big"
 	"strings"
 	"testing"
-	//"net/http/httptest"
-	//"net/url"
-	//"io/ioutil"
-	//"fmt"
-	//"context"
-
 	"github.com/livepeer/go-livepeer/core"
 	"github.com/stretchr/testify/assert"
 )
